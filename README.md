@@ -7,6 +7,7 @@ This repository implements the AI Marketing Agent MVP with:
 - Human approval gate for campaign publish readiness
 - Configurable trend source connectors (`config/trend_sources.json`)
 - Data model for projects, tasks, recommendations, memory, campaigns, artifacts, approvals
+- OpenAI provider integration for page analysis, image understanding, and copy generation
 
 ## Worker Agents
 - `TrendScoutAgent`
@@ -34,6 +35,16 @@ This repository implements the AI Marketing Agent MVP with:
 pip install -e .[dev]
 uvicorn app.main:app --reload
 ```
+
+## Configure AI Provider
+Set these environment variables (or add them to `.env`):
+```bash
+OPENAI_API_KEY=your_key_here
+OPENAI_MODEL=gpt-4.1-mini
+OPENAI_VISION_MODEL=gpt-4.1-mini
+```
+
+If `OPENAI_API_KEY` is not set, workers use deterministic fallback logic so local development and tests still run.
 
 ## Test
 ```bash

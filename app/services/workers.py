@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 
+from app.services.model_provider import OpenAIProvider
 from app.services.scoring import TrendSignals, score_candidate
 
 
@@ -47,10 +48,19 @@ class TrendScoutAgent:
 class PageAnalyzerAgent:
     name = "PageAnalyzerAgent"
 
+    def __init__(self, provider: OpenAIProvider | None = None) -> None:
+        self.provider = provider or OpenAIProvider()
+
     def run(self, source_url: str) -> dict:
+        prompt = (
+            "Analyze this landing page URL and infer its marketing structure. "
+            "Return concise bullet-like insights about offer, CTA, proof, structure, and headline pattern. "
+            f"URL: {source_url}"
+        )
+        llm_text = self.provider.generate_text(prompt)
         return {
             "reference_url": source_url,
-            "offer": "Bundle-first with limited-time urgency",
+            "offer": "Bundle-first with limited-time urgency" if not llm_text else llm_text[:180],
             "cta": "Single high-contrast buy CTA repeated across sections",
             "proof": "UGC testimonials above fold + trust badges",
             "structure": ["Hero", "Problem", "Benefits", "Proof", "Offer", "FAQ", "CTA"],
@@ -79,13 +89,23 @@ class BrandPatternAgent:
 class VisionProductAgent:
     name = "VisionProductAgent"
 
+    def __init__(self, provider: OpenAIProvider | None = None) -> None:
+        self.provider = provider or OpenAIProvider()
+
     def run(self, file_path: str) -> dict:
         suffix = Path(file_path).suffix.lower()
         format_name = suffix.replace(".", "") if suffix else "unknown"
+        analysis = self.provider.analyze_image(
+            file_path,
+            (
+                "Analyze this product image for marketing. "
+                "Return: likely product type, 3 audience angles, and key visual hooks."
+            ),
+        )
         return {
             "image_path": file_path,
             "detected_format": format_name,
-            "product_guess": "consumer product",
+            "product_guess": "consumer product" if not analysis else analysis[:120],
             "angles": ["time-saving", "premium feel", "social proof readiness"],
         }
 
@@ -93,9 +113,25 @@ class VisionProductAgent:
 class CampaignGeneratorAgent:
     name = "CampaignGeneratorAgent"
 
+    def __init__(self, provider: OpenAIProvider | None = None) -> None:
+        self.provider = provider or OpenAIProvider()
+
     def run(self, brand_pattern: dict, product_context: dict) -> dict:
+        prompt = (
+            "Generate marketing copy using the following brand pattern and product context.\n"
+            f"Brand pattern: {json.dumps(brand_pattern)}\n"
+            f"Product context: {json.dumps(product_context)}\n"
+            "Return concise copy for: headline, subheadline, product_description, 3 ads, email, social."
+        )
+        llm_text = self.provider.generate_text(prompt)
         headline = "Get Premium Results in Days, Not Months"
         subheadline = "Built for modern buyers who want visible outcomes with less effort."
+        if llm_text:
+            lines = [line.strip() for line in llm_text.splitlines() if line.strip()]
+            if lines:
+                headline = lines[0][:120]
+            if len(lines) > 1:
+                subheadline = lines[1][:160]
         return {
             "hero": {
                 "headline": headline,

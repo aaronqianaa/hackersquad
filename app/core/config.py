@@ -10,6 +10,9 @@ class Settings(BaseSettings):
     stale_timeout_seconds: int = 75
     max_retries: int = 3
     model_provider: str = "single-provider"
+    openai_api_key: str = ""
+    openai_model: str = "gpt-4.1-mini"
+    openai_vision_model: str = "gpt-4.1-mini"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
