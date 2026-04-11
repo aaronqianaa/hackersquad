@@ -1,0 +1,51 @@
+version: '3.9'
+services:
+  api:
+    build: .
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    environment:
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@postgres:5432/hackersquad
+      UPLOADS_DIR: /data/uploads
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./:/workspace
+      - uploads:/data/uploads
+    working_dir: /workspace
+    depends_on:
+      - postgres
+      - redis
+      - temporal
+
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: hackersquad
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
+
+  temporal:
+    image: temporalio/auto-setup:1.25.2
+    environment:
+      DB: postgresql
+      DB_PORT: 5432
+      POSTGRES_USER: postgres
+      POSTGRES_PWD: postgres
+      POSTGRES_SEEDS: postgres
+    ports:
+      - "7233:7233"
+    depends_on:
+      - postgres
+
+volumes:
+  pgdata:
+  uploads:

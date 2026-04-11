@@ -1,0 +1,35 @@
+[
+  {
+    "source_url": "https://example.com/dtc/skincare-winner",
+    "title": "Skincare Funnel - Conversion Focused",
+    "signals": {
+      "recency": 0.78,
+      "engagement": 0.88,
+      "structural_quality": 0.90,
+      "niche_relevance": 0.85,
+      "novelty": 0.62
+    }
+  },
+  {
+    "source_url": "https://example.com/gadgets/prelaunch-page",
+    "title": "Gadget Prelaunch with Social Proof",
+    "signals": {
+      "recency": 0.84,
+      "engagement": 0.80,
+      "structural_quality": 0.82,
+      "niche_relevance": 0.70,
+      "novelty": 0.75
+    }
+  },
+  {
+    "source_url": "https://example.com/fashion/ugc-offer",
+    "title": "Fashion UGC + Offer Stacking",
+    "signals": {
+      "recency": 0.72,
+      "engagement": 0.86,
+      "structural_quality": 0.79,
+      "niche_relevance": 0.76,
+      "novelty": 0.82
+    }
+  }
+]
