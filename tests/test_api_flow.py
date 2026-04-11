@@ -2,8 +2,9 @@ import time
 
 from fastapi.testclient import TestClient
 
-from app.db import Base, engine
+from app.db import Base, SessionLocal, engine
 from app.main import app
+from app.models import Campaign, CampaignArtifact
 
 
 client = TestClient(app)
@@ -126,6 +127,18 @@ def test_regenerate_single_artifact_endpoint() -> None:
     emails = [a for a in artifacts_resp.json() if a["artifact_type"] == "email"]
     assert len(emails) >= 1
 
+    db = SessionLocal()
+    try:
+        stored_email = (
+            db.query(CampaignArtifact)
+            .filter(CampaignArtifact.campaign_id == campaign_id, CampaignArtifact.artifact_type == "email")
+            .first()
+        )
+        assert stored_email is not None
+        assert stored_email.provenance["prompt_version"] == "email.v1"
+    finally:
+        db.close()
+
 
 def test_update_single_artifact_content_endpoint() -> None:
     project_id = _create_project_with_selection_and_upload()
@@ -158,3 +171,29 @@ def test_update_single_artifact_content_endpoint() -> None:
     )
     assert restore_resp.status_code == 200
     assert restore_resp.json()["content"] != "Edited manually from test"
+
+
+def test_campaign_generation_stores_prompt_versions_in_campaign_context_and_artifacts() -> None:
+    project_id = _create_project_with_selection_and_upload()
+    task_id, campaign_id, task_payload = _start_and_wait_campaign(project_id, "campaign-flow-prompt-versions")
+    assert task_payload["status"] == "completed"
+    assert task_id
+
+    db = SessionLocal()
+    try:
+        campaign = db.query(Campaign).filter(Campaign.id == campaign_id).first()
+        assert campaign is not None
+        assert campaign.prompt_context["prompt_versions"]["hero"] == "hero.v1"
+        assert campaign.prompt_context["prompt_versions"]["creative_brief"] == "creative_brief.v1"
+        assert campaign.prompt_context["qa"]["quality_checks"]["tone_alignment"]["passed"] is True
+        assert campaign.prompt_context["qa"]["quality_checks"]["cta_clarity"]["passed"] is True
+        assert campaign.prompt_context["qa"]["quality_checks"]["policy_safe_claims"]["passed"] is True
+
+        artifacts = db.query(CampaignArtifact).filter(CampaignArtifact.campaign_id == campaign_id).all()
+        assert len(artifacts) >= 3
+        assert all(artifact.provenance.get("prompt_version") for artifact in artifacts)
+        prompt_versions = {artifact.artifact_type: artifact.provenance["prompt_version"] for artifact in artifacts}
+        assert prompt_versions["hero"] == "hero.v1"
+        assert prompt_versions["page_draft"] == "page_draft.v1"
+    finally:
+        db.close()

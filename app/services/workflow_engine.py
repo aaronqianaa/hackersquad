@@ -1,6 +1,8 @@
 from collections.abc import Callable
 from threading import Thread
 
+from app.core.config import settings
+
 
 class WorkflowEngine:
     def run_async(self, fn: Callable[[], None]) -> None:
@@ -9,6 +11,9 @@ class WorkflowEngine:
 
 class LocalThreadWorkflowEngine(WorkflowEngine):
     def run_async(self, fn: Callable[[], None]) -> None:
+        if settings.database_url in {"sqlite://", "sqlite:///:memory:"}:
+            fn()
+            return
         thread = Thread(target=fn, daemon=True)
         thread.start()
 

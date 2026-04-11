@@ -73,6 +73,13 @@ class SupervisorAgent:
             raise ValueError("Unsupported artifact type")
         return mapping[artifact_type](campaign_bundle)
 
+    def _prompt_version(self, artifact_type: str, campaign_bundle: dict | None = None, campaign: Campaign | None = None) -> str:
+        if campaign_bundle and campaign_bundle.get("_prompt_versions", {}).get(artifact_type):
+            return campaign_bundle["_prompt_versions"][artifact_type]
+        if campaign and campaign.prompt_context.get("prompt_versions", {}).get(artifact_type):
+            return campaign.prompt_context["prompt_versions"][artifact_type]
+        return "unknown"
+
     def _snapshot_artifact_revision(self, db: Session, artifact: CampaignArtifact, source: str) -> CampaignArtifactRevision:
         revision = CampaignArtifactRevision(
             artifact_id=artifact.id,
@@ -265,7 +272,11 @@ class SupervisorAgent:
                             artifact_type=artifact_type,
                             content=content,
                             idempotency_key=artifact_idempotency,
-                            provenance={"task_id": wf_task.id, "agent": self.generator.name},
+                            provenance={
+                                "task_id": wf_task.id,
+                                "agent": self.generator.name,
+                                "prompt_version": self._prompt_version(artifact_type, campaign_bundle=campaign_bundle),
+                            },
                         )
                         wf_db.add(artifact)
 
@@ -273,6 +284,7 @@ class SupervisorAgent:
                         "brand_pattern": brand_pattern,
                         "product_context": product_context,
                         "qa": qa_result,
+                        "prompt_versions": campaign_bundle.get("_prompt_versions", {}),
                     }
                     wf_db.add(wf_campaign)
                     heartbeat(wf_db, wf_task)
@@ -315,7 +327,12 @@ class SupervisorAgent:
         if artifact:
             self._snapshot_artifact_revision(db, artifact, source="regenerate")
             artifact.content = content
-            artifact.provenance = {"regenerated": True, "agent": self.generator.name, "at": utcnow().isoformat()}
+            artifact.provenance = {
+                "regenerated": True,
+                "agent": self.generator.name,
+                "at": utcnow().isoformat(),
+                "prompt_version": self._prompt_version(artifact_type, campaign_bundle=campaign_bundle, campaign=campaign),
+            }
             db.add(artifact)
             db.commit()
             db.refresh(artifact)
@@ -326,7 +343,12 @@ class SupervisorAgent:
             artifact_type=artifact_type,
             content=content,
             idempotency_key=f"{campaign_id}:{artifact_type}:regen:{uuid.uuid4()}",
-            provenance={"regenerated": True, "agent": self.generator.name, "at": utcnow().isoformat()},
+            provenance={
+                "regenerated": True,
+                "agent": self.generator.name,
+                "at": utcnow().isoformat(),
+                "prompt_version": self._prompt_version(artifact_type, campaign_bundle=campaign_bundle, campaign=campaign),
+            },
         )
         db.add(new_artifact)
         db.commit()

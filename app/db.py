@@ -15,7 +15,7 @@ if settings.database_url.startswith("sqlite"):
         engine_kwargs["poolclass"] = StaticPool
 
 engine = create_engine(settings.database_url, connect_args=connect_args, **engine_kwargs)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, expire_on_commit=False, bind=engine)
 Base = declarative_base()
 
 

@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 from app.services.model_provider import OpenAIProvider
+from app.services.prompt_templates import ARTIFACT_TYPES, build_prompt, prompt_version_for
 from app.services.scoring import TrendSignals, score_candidate
 
 
@@ -116,26 +117,11 @@ class CampaignGeneratorAgent:
     def __init__(self, provider: OpenAIProvider | None = None) -> None:
         self.provider = provider or OpenAIProvider()
 
-    def run(self, brand_pattern: dict, product_context: dict) -> dict:
-        prompt = (
-            "Generate marketing copy using the following brand pattern and product context.\n"
-            f"Brand pattern: {json.dumps(brand_pattern)}\n"
-            f"Product context: {json.dumps(product_context)}\n"
-            "Return concise copy for: headline, subheadline, product_description, 3 ads, email, social."
-        )
-        llm_text = self.provider.generate_text(prompt)
-        headline = "Get Premium Results in Days, Not Months"
-        subheadline = "Built for modern buyers who want visible outcomes with less effort."
-        if llm_text:
-            lines = [line.strip() for line in llm_text.splitlines() if line.strip()]
-            if lines:
-                headline = lines[0][:120]
-            if len(lines) > 1:
-                subheadline = lines[1][:160]
+    def _fallback_bundle(self, brand_pattern: dict, product_context: dict) -> dict:
         return {
             "hero": {
-                "headline": headline,
-                "subheadline": subheadline,
+                "headline": "Get Premium Results in Days, Not Months",
+                "subheadline": "Built for modern buyers who want visible outcomes with less effort.",
                 "cta": "Get Yours Today",
             },
             "product_description": "A high-impact product crafted to deliver fast, reliable results with a premium experience.",
@@ -154,11 +140,157 @@ class CampaignGeneratorAgent:
             },
         }
 
+    def _generate_hero(self, prompt: str, fallback: dict) -> dict:
+        llm_text = self.provider.generate_text(prompt)
+        if not llm_text:
+            return fallback
+        parsed = {"headline": fallback["headline"], "subheadline": fallback["subheadline"], "cta": fallback["cta"]}
+        for raw_line in llm_text.splitlines():
+            line = raw_line.strip()
+            if ":" not in line:
+                continue
+            label, value = line.split(":", 1)
+            key = label.strip().lower()
+            value = value.strip()
+            if key == "headline" and value:
+                parsed["headline"] = value[:120]
+            elif key == "subheadline" and value:
+                parsed["subheadline"] = value[:180]
+            elif key == "cta" and value:
+                parsed["cta"] = value[:80]
+        return parsed
+
+    def _generate_ads(self, prompt: str, fallback: list[str]) -> list[str]:
+        llm_text = self.provider.generate_text(prompt)
+        if not llm_text:
+            return fallback
+        ads: list[str] = []
+        for raw_line in llm_text.splitlines():
+            line = raw_line.strip()
+            if ":" in line:
+                _, value = line.split(":", 1)
+                line = value.strip()
+            if line:
+                ads.append(line[:160])
+        return ads[:3] if ads else fallback
+
+    def _generate_email(self, prompt: str, fallback: str) -> str:
+        llm_text = self.provider.generate_text(prompt)
+        return llm_text or fallback
+
+    def _generate_text_artifact(self, prompt: str, fallback: str) -> str:
+        llm_text = self.provider.generate_text(prompt)
+        return llm_text or fallback
+
+    def _generate_creative_brief(self, prompt: str, fallback: dict) -> dict:
+        llm_text = self.provider.generate_text(prompt)
+        if not llm_text:
+            return fallback
+        return {
+            "visual_direction": llm_text[:220],
+            "tone": fallback["tone"],
+            "product_angles": fallback["product_angles"],
+        }
+
+    def run(self, brand_pattern: dict, product_context: dict) -> dict:
+        fallback = self._fallback_bundle(brand_pattern, product_context)
+        prompts = {artifact_type: build_prompt(artifact_type, brand_pattern, product_context) for artifact_type in ARTIFACT_TYPES}
+        prompt_versions = {artifact_type: prompt_version_for(artifact_type) for artifact_type in ARTIFACT_TYPES}
+        bundle = {
+            "hero": self._generate_hero(prompts["hero"], fallback["hero"]),
+            "product_description": self._generate_text_artifact(
+                prompts["product_description"], fallback["product_description"]
+            ),
+            "ads": self._generate_ads(prompts["ads"], fallback["ads"]),
+            "email": self._generate_email(prompts["email"], fallback["email"]),
+            "social": self._generate_text_artifact(prompts["social"], fallback["social"]),
+            "page_draft": self._generate_text_artifact(prompts["page_draft"], fallback["page_draft"]),
+            "creative_brief": self._generate_creative_brief(prompts["creative_brief"], fallback["creative_brief"]),
+            "_prompt_versions": prompt_versions,
+        }
+        return bundle
+
 
 class QAComplianceAgent:
     name = "QAComplianceAgent"
 
+    def _combined_copy(self, campaign_bundle: dict) -> str:
+        hero = campaign_bundle.get("hero", {})
+        ads = campaign_bundle.get("ads", [])
+        creative_brief = campaign_bundle.get("creative_brief", {})
+        parts = [
+            hero.get("headline", ""),
+            hero.get("subheadline", ""),
+            hero.get("cta", ""),
+            campaign_bundle.get("product_description", ""),
+            *ads,
+            campaign_bundle.get("email", ""),
+            campaign_bundle.get("social", ""),
+            campaign_bundle.get("page_draft", ""),
+            creative_brief.get("visual_direction", ""),
+            creative_brief.get("tone", ""),
+        ]
+        return " ".join(part for part in parts if part)
+
+    def _tone_alignment_check(self, campaign_bundle: dict) -> dict:
+        creative_brief = campaign_bundle.get("creative_brief", {})
+        expected_tone = creative_brief.get("tone", "")
+        normalized_tone = expected_tone.lower()
+        tokens = [token.strip() for token in normalized_tone.replace(",", " ").split() if token.strip()]
+        copy_text = self._combined_copy(campaign_bundle).lower()
+        matched_tokens = [token for token in tokens if token in copy_text]
+        passed = len(matched_tokens) > 0 if tokens else True
+        return {
+            "passed": passed,
+            "expected_tone": expected_tone,
+            "matched_keywords": matched_tokens,
+            "reason": "tone cues detected in generated copy" if passed else "expected tone cues missing from generated copy",
+        }
+
+    def _cta_clarity_check(self, campaign_bundle: dict) -> dict:
+        cta_candidates = [
+            campaign_bundle.get("hero", {}).get("cta", ""),
+            campaign_bundle.get("email", ""),
+            campaign_bundle.get("social", ""),
+            campaign_bundle.get("page_draft", ""),
+        ]
+        action_verbs = ("get", "shop", "start", "try", "discover", "buy", "join", "see", "claim")
+        matched_ctas = [
+            candidate for candidate in cta_candidates if candidate and any(verb in candidate.lower() for verb in action_verbs)
+        ]
+        passed = bool(matched_ctas)
+        return {
+            "passed": passed,
+            "matched_examples": matched_ctas[:3],
+            "reason": "clear CTA language present" if passed else "no clear action-oriented CTA language found",
+        }
+
+    def _policy_safe_claims_check(self, campaign_bundle: dict) -> dict:
+        copy_text = self._combined_copy(campaign_bundle).lower()
+        banned_phrases = (
+            "guaranteed",
+            "cure",
+            "risk-free",
+            "instant results",
+            "works for everyone",
+            "scientifically proven",
+            "clinically proven",
+            "100% guaranteed",
+        )
+        violations = [phrase for phrase in banned_phrases if phrase in copy_text]
+        passed = not violations
+        return {
+            "passed": passed,
+            "violations": violations,
+            "reason": "no unsafe claim patterns detected" if passed else "potentially unsafe claims detected",
+        }
+
     def run(self, campaign_bundle: dict) -> dict:
+        quality_checks = {
+            "tone_alignment": self._tone_alignment_check(campaign_bundle),
+            "cta_clarity": self._cta_clarity_check(campaign_bundle),
+            "policy_safe_claims": self._policy_safe_claims_check(campaign_bundle),
+        }
         checks = {
             "has_hero": "hero" in campaign_bundle,
             "has_ads": bool(campaign_bundle.get("ads")),
@@ -166,6 +298,17 @@ class QAComplianceAgent:
             "has_cta": bool(campaign_bundle.get("hero", {}).get("cta")),
             "human_approval_required": True,
             "originality_risk": "low",
+            "quality_checks": quality_checks,
         }
-        checks["ready_for_draft"] = all([checks["has_hero"], checks["has_ads"], checks["has_email"], checks["has_cta"]])
+        checks["ready_for_draft"] = all(
+            [
+                checks["has_hero"],
+                checks["has_ads"],
+                checks["has_email"],
+                checks["has_cta"],
+                quality_checks["tone_alignment"]["passed"],
+                quality_checks["cta_clarity"]["passed"],
+                quality_checks["policy_safe_claims"]["passed"],
+            ]
+        )
         return checks
