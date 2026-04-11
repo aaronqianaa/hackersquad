@@ -4,8 +4,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.api.security import AuthContext, get_auth_context
 from app.core.config import settings
 from app.db import SessionLocal, get_db
 from app.models import (
@@ -31,6 +33,7 @@ from app.schemas import (
     PurgeMemoryResponse,
     ReferenceSelectRequest,
     TaskOut,
+    TaskSummaryOut,
     TrendRecommendationOut,
     TrendScanRequest,
     UploadResponse,
@@ -58,8 +61,23 @@ def to_task_out(task: Task) -> TaskOut:
     )
 
 
+def require_project_access(db: Session, project_id: str, auth: AuthContext) -> Project:
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    if auth.tenant_id and project.tenant_id != auth.tenant_id:
+        raise HTTPException(status_code=403, detail="Project is not accessible for this tenant")
+    return project
+
+
 @router.post("/projects", response_model=ProjectOut)
-def create_project(payload: ProjectCreate, db: Session = Depends(get_db)) -> ProjectOut:
+def create_project(
+    payload: ProjectCreate,
+    db: Session = Depends(get_db),
+    auth: AuthContext = Depends(get_auth_context),
+) -> ProjectOut:
+    if auth.tenant_id and payload.tenant_id != auth.tenant_id:
+        raise HTTPException(status_code=403, detail="Payload tenant does not match tenant header")
     project = Project(tenant_id=payload.tenant_id, name=payload.name, niche_tags=payload.niche_tags)
     db.add(project)
     db.commit()
@@ -75,16 +93,24 @@ def create_project(payload: ProjectCreate, db: Session = Depends(get_db)) -> Pro
 
 
 @router.post("/projects/{project_id}/trend-scan", response_model=TaskOut)
-def trend_scan(project_id: str, _: TrendScanRequest, db: Session = Depends(get_db)) -> TaskOut:
-    project = db.query(Project).filter(Project.id == project_id).first()
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+def trend_scan(
+    project_id: str,
+    _: TrendScanRequest,
+    db: Session = Depends(get_db),
+    auth: AuthContext = Depends(get_auth_context),
+) -> TaskOut:
+    project = require_project_access(db, project_id, auth)
     task = supervisor.run_trend_scan(db, project, idempotency_key=f"trend:{project_id}:{uuid.uuid4()}")
     return to_task_out(task)
 
 
 @router.get("/projects/{project_id}/recommendations", response_model=list[TrendRecommendationOut])
-def list_recommendations(project_id: str, db: Session = Depends(get_db)) -> list[TrendRecommendationOut]:
+def list_recommendations(
+    project_id: str,
+    db: Session = Depends(get_db),
+    auth: AuthContext = Depends(get_auth_context),
+) -> list[TrendRecommendationOut]:
+    require_project_access(db, project_id, auth)
     rows = (
         db.query(TrendRecommendation)
         .filter(TrendRecommendation.project_id == project_id)
@@ -106,10 +132,13 @@ def list_recommendations(project_id: str, db: Session = Depends(get_db)) -> list
 
 
 @router.post("/projects/{project_id}/reference-page/select")
-def select_reference_page(project_id: str, payload: ReferenceSelectRequest, db: Session = Depends(get_db)) -> dict:
-    project = db.query(Project).filter(Project.id == project_id).first()
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+def select_reference_page(
+    project_id: str,
+    payload: ReferenceSelectRequest,
+    db: Session = Depends(get_db),
+    auth: AuthContext = Depends(get_auth_context),
+) -> dict:
+    project = require_project_access(db, project_id, auth)
     try:
         pattern = supervisor.select_reference_page(db, project, payload.recommendation_id)
     except ValueError as exc:
@@ -124,10 +153,13 @@ def select_reference_page(project_id: str, payload: ReferenceSelectRequest, db: 
 
 
 @router.post("/projects/{project_id}/uploads/product-image", response_model=UploadResponse)
-def upload_product_image(project_id: str, file: UploadFile = File(...), db: Session = Depends(get_db)) -> UploadResponse:
-    project = db.query(Project).filter(Project.id == project_id).first()
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+def upload_product_image(
+    project_id: str,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    auth: AuthContext = Depends(get_auth_context),
+) -> UploadResponse:
+    require_project_access(db, project_id, auth)
 
     project_dir = Path(settings.uploads_dir) / project_id
     project_dir.mkdir(parents=True, exist_ok=True)
@@ -145,10 +177,13 @@ def upload_product_image(project_id: str, file: UploadFile = File(...), db: Sess
 
 
 @router.post("/projects/{project_id}/campaigns/generate", response_model=CampaignGenerateResponse)
-def generate_campaign(project_id: str, payload: CampaignGenerateRequest, db: Session = Depends(get_db)) -> CampaignGenerateResponse:
-    project = db.query(Project).filter(Project.id == project_id).first()
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+def generate_campaign(
+    project_id: str,
+    payload: CampaignGenerateRequest,
+    db: Session = Depends(get_db),
+    auth: AuthContext = Depends(get_auth_context),
+) -> CampaignGenerateResponse:
+    require_project_access(db, project_id, auth)
 
     upload = (
         db.query(ProductUpload)
@@ -169,7 +204,13 @@ def generate_campaign(project_id: str, payload: CampaignGenerateRequest, db: Ses
 
 
 @router.get("/projects/{project_id}/tasks/{task_id}", response_model=TaskOut)
-def get_task(project_id: str, task_id: str, db: Session = Depends(get_db)) -> TaskOut:
+def get_task(
+    project_id: str,
+    task_id: str,
+    db: Session = Depends(get_db),
+    auth: AuthContext = Depends(get_auth_context),
+) -> TaskOut:
+    require_project_access(db, project_id, auth)
     task = db.query(Task).filter(Task.id == task_id, Task.project_id == project_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
@@ -177,7 +218,14 @@ def get_task(project_id: str, task_id: str, db: Session = Depends(get_db)) -> Ta
 
 
 @router.post("/projects/{project_id}/campaigns/{campaign_id}/approve")
-def approve_campaign(project_id: str, campaign_id: str, payload: CampaignApprovalRequest, db: Session = Depends(get_db)) -> dict:
+def approve_campaign(
+    project_id: str,
+    campaign_id: str,
+    payload: CampaignApprovalRequest,
+    db: Session = Depends(get_db),
+    auth: AuthContext = Depends(get_auth_context),
+) -> dict:
+    require_project_access(db, project_id, auth)
     campaign = db.query(Campaign).filter(Campaign.id == campaign_id, Campaign.project_id == project_id).first()
     if not campaign:
         raise HTTPException(status_code=404, detail="Campaign not found")
@@ -191,7 +239,13 @@ def approve_campaign(project_id: str, campaign_id: str, payload: CampaignApprova
 
 
 @router.get("/projects/{project_id}/campaigns/{campaign_id}/artifacts", response_model=list[CampaignArtifactOut])
-def list_artifacts(project_id: str, campaign_id: str, db: Session = Depends(get_db)) -> list[CampaignArtifactOut]:
+def list_artifacts(
+    project_id: str,
+    campaign_id: str,
+    db: Session = Depends(get_db),
+    auth: AuthContext = Depends(get_auth_context),
+) -> list[CampaignArtifactOut]:
+    require_project_access(db, project_id, auth)
     campaign = db.query(Campaign).filter(Campaign.id == campaign_id, Campaign.project_id == project_id).first()
     if not campaign:
         raise HTTPException(status_code=404, detail="Campaign not found")
@@ -203,8 +257,20 @@ def list_artifacts(project_id: str, campaign_id: str, db: Session = Depends(get_
 
 
 @router.post("/memory/purge", response_model=PurgeMemoryResponse)
-def purge_memory(payload: PurgeMemoryRequest, db: Session = Depends(get_db)) -> PurgeMemoryResponse:
+def purge_memory(
+    payload: PurgeMemoryRequest,
+    db: Session = Depends(get_db),
+    auth: AuthContext = Depends(get_auth_context),
+) -> PurgeMemoryResponse:
+    if payload.project_id:
+        project = db.query(Project).filter(Project.id == payload.project_id).first()
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        if auth.tenant_id and project.tenant_id != auth.tenant_id:
+            raise HTTPException(status_code=403, detail="Project is not accessible for this tenant")
     query = db.query(MemoryRecord).filter(MemoryRecord.deleted_at.is_(None))
+    if auth.tenant_id:
+        query = query.filter(MemoryRecord.tenant_id == auth.tenant_id)
     if payload.project_id:
         query = query.filter(MemoryRecord.project_id == payload.project_id)
     if payload.scope:
@@ -220,7 +286,13 @@ def purge_memory(payload: PurgeMemoryRequest, db: Session = Depends(get_db)) -> 
 
 
 @router.delete("/projects/{project_id}/uploads/{upload_id}")
-def delete_upload(project_id: str, upload_id: str, db: Session = Depends(get_db)) -> dict:
+def delete_upload(
+    project_id: str,
+    upload_id: str,
+    db: Session = Depends(get_db),
+    auth: AuthContext = Depends(get_auth_context),
+) -> dict:
+    require_project_access(db, project_id, auth)
     upload = db.query(ProductUpload).filter(ProductUpload.id == upload_id, ProductUpload.project_id == project_id).first()
     if not upload:
         raise HTTPException(status_code=404, detail="Upload not found")
@@ -233,3 +305,34 @@ def delete_upload(project_id: str, upload_id: str, db: Session = Depends(get_db)
     db.delete(upload)
     db.commit()
     return {"deleted": True, "upload_id": upload_id}
+
+
+@router.get("/ops/tasks/summary", response_model=TaskSummaryOut)
+def task_summary(
+    db: Session = Depends(get_db),
+    auth: AuthContext = Depends(get_auth_context),
+) -> TaskSummaryOut:
+    query = db.query(Task)
+    if auth.tenant_id:
+        query = query.join(Project, Project.id == Task.project_id).filter(Project.tenant_id == auth.tenant_id)
+
+    total_tasks = query.count()
+    running_tasks = query.filter(Task.status == "running").count()
+    failed_tasks = query.filter(Task.status == "failed").count()
+    blocked_tasks = query.filter(Task.status == "blocked").count()
+    completed_tasks = query.filter(Task.status == "completed").count()
+
+    completion_query = query.filter(Task.status == "completed").with_entities(
+        func.avg(func.julianday(Task.updated_at) - func.julianday(Task.created_at))
+    )
+    avg_completion_seconds = completion_query.scalar()
+    avg_seconds = float(avg_completion_seconds * 86400) if avg_completion_seconds else 0.0
+
+    return TaskSummaryOut(
+        total_tasks=total_tasks,
+        running_tasks=running_tasks,
+        failed_tasks=failed_tasks,
+        blocked_tasks=blocked_tasks,
+        completed_tasks=completed_tasks,
+        avg_completion_seconds=round(avg_seconds, 3),
+    )

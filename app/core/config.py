@@ -10,6 +10,8 @@ class Settings(BaseSettings):
     stale_timeout_seconds: int = 75
     max_retries: int = 3
     model_provider: str = "single-provider"
+    api_key: str = ""
+    require_tenant_header: bool = False
     openai_api_key: str = ""
     openai_model: str = "gpt-4.1-mini"
     openai_vision_model: str = "gpt-4.1-mini"

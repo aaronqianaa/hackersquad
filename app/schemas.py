@@ -83,3 +83,12 @@ class PurgeMemoryRequest(BaseModel):
 
 class PurgeMemoryResponse(BaseModel):
     deleted_count: int
+
+
+class TaskSummaryOut(BaseModel):
+    total_tasks: int
+    running_tasks: int
+    failed_tasks: int
+    blocked_tasks: int
+    completed_tasks: int
+    avg_completion_seconds: float

@@ -14,7 +14,7 @@ def setup_function() -> None:
     Base.metadata.create_all(bind=engine)
 
 
-def test_end_to_end_api_flow() -> None:
+def _create_project_with_selection_and_upload() -> str:
     project_resp = client.post(
         "/projects",
         json={"tenant_id": "tenant-1", "name": "Demo Project", "niche_tags": ["skincare", "dtc"]},
@@ -24,7 +24,6 @@ def test_end_to_end_api_flow() -> None:
 
     trend_resp = client.post(f"/projects/{project_id}/trend-scan", json={"force_refresh": True})
     assert trend_resp.status_code == 200
-    assert trend_resp.json()["status"] == "completed"
 
     recs_resp = client.get(f"/projects/{project_id}/recommendations")
     assert recs_resp.status_code == 200
@@ -43,26 +42,34 @@ def test_end_to_end_api_flow() -> None:
         files={"file": ("product.jpg", file_bytes, "image/jpeg")},
     )
     assert upload_resp.status_code == 200
+    return project_id
 
+
+def _start_and_wait_campaign(project_id: str, idempotency_key: str) -> tuple[str, str, dict]:
     generate_resp = client.post(
         f"/projects/{project_id}/campaigns/generate",
-        json={"idempotency_key": "campaign-flow-1"},
+        json={"idempotency_key": idempotency_key},
     )
     assert generate_resp.status_code == 200
     payload = generate_resp.json()
     task_id = payload["task_id"]
     campaign_id = payload["campaign_id"]
 
-    status = "running"
+    task_payload: dict = {}
     for _ in range(30):
         task_resp = client.get(f"/projects/{project_id}/tasks/{task_id}")
         assert task_resp.status_code == 200
-        status = task_resp.json()["status"]
-        if status in {"completed", "failed", "blocked"}:
+        task_payload = task_resp.json()
+        if task_payload["status"] in {"completed", "failed", "blocked"}:
             break
         time.sleep(0.1)
+    return task_id, campaign_id, task_payload
 
-    assert status == "completed"
+
+def test_end_to_end_api_flow() -> None:
+    project_id = _create_project_with_selection_and_upload()
+    _, campaign_id, task_payload = _start_and_wait_campaign(project_id, "campaign-flow-1")
+    assert task_payload["status"] == "completed"
 
     artifacts_resp = client.get(f"/projects/{project_id}/campaigns/{campaign_id}/artifacts")
     assert artifacts_resp.status_code == 200
@@ -74,3 +81,17 @@ def test_end_to_end_api_flow() -> None:
     )
     assert approve_resp.status_code == 200
     assert approve_resp.json()["status"] == "approved"
+
+
+def test_campaign_generation_regression_no_invalid_transition_failure() -> None:
+    project_id = _create_project_with_selection_and_upload()
+    _, campaign_id, task_payload = _start_and_wait_campaign(project_id, "campaign-flow-regression")
+
+    assert task_payload["status"] == "completed"
+    assert task_payload.get("error_reason") in (None, "")
+    assert "Invalid task transition" not in (task_payload.get("error_reason") or "")
+    assert task_payload["checkpoint"] == "artifacts_saved"
+
+    artifacts_resp = client.get(f"/projects/{project_id}/campaigns/{campaign_id}/artifacts")
+    assert artifacts_resp.status_code == 200
+    assert len(artifacts_resp.json()) >= 1

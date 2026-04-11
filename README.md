@@ -46,6 +46,23 @@ OPENAI_VISION_MODEL=gpt-4.1-mini
 
 If `OPENAI_API_KEY` is not set, workers use deterministic fallback logic so local development and tests still run.
 
+## Optional API Security
+You can enforce API key and tenant headers for production-like access control:
+```bash
+API_KEY=your_internal_api_key
+REQUIRE_TENANT_HEADER=true
+```
+
+When enabled:
+- Pass `X-API-Key` on protected routes.
+- Pass `X-Tenant-Id` on project-scoped routes and ensure it matches the project tenant.
+
+## Ops Visibility
+Use `GET /ops/tasks/summary` for quick workflow health:
+- counts by status (`running`, `failed`, `blocked`, `completed`)
+- average completion duration in seconds
+- tenant-scoped view when `X-Tenant-Id` is provided
+
 ## Test
 ```bash
 pytest -q
