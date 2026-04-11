@@ -15,6 +15,7 @@ from app.models import (
     BrandPattern,
     Campaign,
     CampaignArtifact,
+    CampaignArtifactRevision,
     CampaignStatus,
     MemoryRecord,
     ProductUpload,
@@ -24,10 +25,12 @@ from app.models import (
 )
 from app.schemas import (
     ArtifactRegenerateRequest,
+    ArtifactRestoreRequest,
     ArtifactUpdateRequest,
     CampaignListOut,
     CampaignApprovalRequest,
     CampaignArtifactOut,
+    CampaignArtifactRevisionOut,
     CampaignGenerateRequest,
     CampaignGenerateResponse,
     ProjectCreate,
@@ -327,8 +330,120 @@ def update_artifact(
     )
     if not artifact:
         raise HTTPException(status_code=404, detail="Artifact not found")
+    revision = CampaignArtifactRevision(
+        artifact_id=artifact.id,
+        campaign_id=campaign_id,
+        artifact_type=artifact.artifact_type,
+        content=artifact.content,
+        source="manual_edit",
+    )
+    db.add(revision)
     artifact.content = payload.content
     artifact.provenance = {"edited": True, "edited_at": datetime.now(timezone.utc).isoformat()}
+    db.add(artifact)
+    db.commit()
+    db.refresh(artifact)
+    return CampaignArtifactOut(
+        id=artifact.id,
+        artifact_type=artifact.artifact_type,
+        content=artifact.content,
+        created_at=artifact.created_at,
+    )
+
+
+@router.get(
+    "/projects/{project_id}/campaigns/{campaign_id}/artifacts/{artifact_id}/revisions",
+    response_model=list[CampaignArtifactRevisionOut],
+)
+def list_artifact_revisions(
+    project_id: str,
+    campaign_id: str,
+    artifact_id: str,
+    db: Session = Depends(get_db),
+    auth: AuthContext = Depends(get_auth_context),
+) -> list[CampaignArtifactRevisionOut]:
+    require_project_access(db, project_id, auth)
+    campaign = db.query(Campaign).filter(Campaign.id == campaign_id, Campaign.project_id == project_id).first()
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    artifact = (
+        db.query(CampaignArtifact)
+        .filter(CampaignArtifact.id == artifact_id, CampaignArtifact.campaign_id == campaign_id)
+        .first()
+    )
+    if not artifact:
+        raise HTTPException(status_code=404, detail="Artifact not found")
+    revisions = (
+        db.query(CampaignArtifactRevision)
+        .filter(CampaignArtifactRevision.artifact_id == artifact_id, CampaignArtifactRevision.campaign_id == campaign_id)
+        .order_by(CampaignArtifactRevision.created_at.desc())
+        .all()
+    )
+    return [
+        CampaignArtifactRevisionOut(
+            id=r.id,
+            artifact_id=r.artifact_id,
+            campaign_id=r.campaign_id,
+            artifact_type=r.artifact_type,
+            content=r.content,
+            source=r.source,
+            created_at=r.created_at,
+        )
+        for r in revisions
+    ]
+
+
+@router.post(
+    "/projects/{project_id}/campaigns/{campaign_id}/artifacts/{artifact_id}/restore",
+    response_model=CampaignArtifactOut,
+)
+def restore_artifact_revision(
+    project_id: str,
+    campaign_id: str,
+    artifact_id: str,
+    payload: ArtifactRestoreRequest,
+    db: Session = Depends(get_db),
+    auth: AuthContext = Depends(get_auth_context),
+) -> CampaignArtifactOut:
+    require_project_access(db, project_id, auth)
+    campaign = db.query(Campaign).filter(Campaign.id == campaign_id, Campaign.project_id == project_id).first()
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    artifact = (
+        db.query(CampaignArtifact)
+        .filter(CampaignArtifact.id == artifact_id, CampaignArtifact.campaign_id == campaign_id)
+        .first()
+    )
+    if not artifact:
+        raise HTTPException(status_code=404, detail="Artifact not found")
+    revision = (
+        db.query(CampaignArtifactRevision)
+        .filter(
+            CampaignArtifactRevision.id == payload.revision_id,
+            CampaignArtifactRevision.artifact_id == artifact_id,
+            CampaignArtifactRevision.campaign_id == campaign_id,
+        )
+        .first()
+    )
+    if not revision:
+        raise HTTPException(status_code=404, detail="Revision not found")
+
+    # Save current content before restore for full reversibility.
+    db.add(
+        CampaignArtifactRevision(
+            artifact_id=artifact.id,
+            campaign_id=campaign_id,
+            artifact_type=artifact.artifact_type,
+            content=artifact.content,
+            source="restore_snapshot",
+        )
+    )
+    artifact.content = revision.content
+    artifact.provenance = {
+        "restored": True,
+        "revision_id": revision.id,
+        "restored_at": datetime.now(timezone.utc).isoformat(),
+    }
     db.add(artifact)
     db.commit()
     db.refresh(artifact)

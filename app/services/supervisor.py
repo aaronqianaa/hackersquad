@@ -9,6 +9,7 @@ from app.models import (
     BrandPattern,
     Campaign,
     CampaignArtifact,
+    CampaignArtifactRevision,
     CampaignStatus,
     MemoryRecord,
     MemoryScope,
@@ -71,6 +72,17 @@ class SupervisorAgent:
         if artifact_type not in mapping:
             raise ValueError("Unsupported artifact type")
         return mapping[artifact_type](campaign_bundle)
+
+    def _snapshot_artifact_revision(self, db: Session, artifact: CampaignArtifact, source: str) -> CampaignArtifactRevision:
+        revision = CampaignArtifactRevision(
+            artifact_id=artifact.id,
+            campaign_id=artifact.campaign_id,
+            artifact_type=artifact.artifact_type,
+            content=artifact.content,
+            source=source,
+        )
+        db.add(revision)
+        return revision
 
     def run_trend_scan(self, db: Session, project: Project, idempotency_key: str) -> Task:
         task = create_task(db, project.id, "trend_scan", "SupervisorAgent", idempotency_key)
@@ -301,6 +313,7 @@ class SupervisorAgent:
             .first()
         )
         if artifact:
+            self._snapshot_artifact_revision(db, artifact, source="regenerate")
             artifact.content = content
             artifact.provenance = {"regenerated": True, "agent": self.generator.name, "at": utcnow().isoformat()}
             db.add(artifact)

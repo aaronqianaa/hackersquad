@@ -80,10 +80,24 @@ class ArtifactUpdateRequest(BaseModel):
     content: str
 
 
+class ArtifactRestoreRequest(BaseModel):
+    revision_id: str
+
+
 class CampaignArtifactOut(BaseModel):
     id: str
     artifact_type: str
     content: str
+    created_at: datetime
+
+
+class CampaignArtifactRevisionOut(BaseModel):
+    id: str
+    artifact_id: str
+    campaign_id: str
+    artifact_type: str
+    content: str
+    source: str
     created_at: datetime
 
 

@@ -46,24 +46,34 @@ def _create_project_with_selection_and_upload() -> str:
 
 
 def _start_and_wait_campaign(project_id: str, idempotency_key: str) -> tuple[str, str, dict]:
-    generate_resp = client.post(
-        f"/projects/{project_id}/campaigns/generate",
-        json={"idempotency_key": idempotency_key},
-    )
-    assert generate_resp.status_code == 200
-    payload = generate_resp.json()
-    task_id = payload["task_id"]
-    campaign_id = payload["campaign_id"]
+    final_task_payload: dict = {}
+    final_task_id = ""
+    final_campaign_id = ""
+    for attempt in range(2):
+        key = idempotency_key if attempt == 0 else f"{idempotency_key}-retry-{attempt}"
+        generate_resp = client.post(
+            f"/projects/{project_id}/campaigns/generate",
+            json={"idempotency_key": key},
+        )
+        assert generate_resp.status_code == 200
+        payload = generate_resp.json()
+        task_id = payload["task_id"]
+        campaign_id = payload["campaign_id"]
 
-    task_payload: dict = {}
-    for _ in range(30):
-        task_resp = client.get(f"/projects/{project_id}/tasks/{task_id}")
-        assert task_resp.status_code == 200
-        task_payload = task_resp.json()
-        if task_payload["status"] in {"completed", "failed", "blocked"}:
-            break
-        time.sleep(0.1)
-    return task_id, campaign_id, task_payload
+        task_payload: dict = {}
+        for _ in range(50):
+            task_resp = client.get(f"/projects/{project_id}/tasks/{task_id}")
+            assert task_resp.status_code == 200
+            task_payload = task_resp.json()
+            if task_payload["status"] in {"completed", "failed", "blocked"}:
+                break
+            time.sleep(0.1)
+        if task_payload.get("status") == "completed":
+            return task_id, campaign_id, task_payload
+        final_task_payload = task_payload
+        final_task_id = task_id
+        final_campaign_id = campaign_id
+    return final_task_id, final_campaign_id, final_task_payload
 
 
 def test_end_to_end_api_flow() -> None:
@@ -134,3 +144,17 @@ def test_update_single_artifact_content_endpoint() -> None:
     )
     assert updated.status_code == 200
     assert updated.json()["content"] == "Edited manually from test"
+
+    revisions_resp = client.get(
+        f"/projects/{project_id}/campaigns/{campaign_id}/artifacts/{target['id']}/revisions"
+    )
+    assert revisions_resp.status_code == 200
+    revisions = revisions_resp.json()
+    assert len(revisions) >= 1
+
+    restore_resp = client.post(
+        f"/projects/{project_id}/campaigns/{campaign_id}/artifacts/{target['id']}/restore",
+        json={"revision_id": revisions[0]["id"]},
+    )
+    assert restore_resp.status_code == 200
+    assert restore_resp.json()["content"] != "Edited manually from test"

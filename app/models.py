@@ -138,6 +138,18 @@ class CampaignArtifact(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
+class CampaignArtifactRevision(Base):
+    __tablename__ = "campaign_artifact_revisions"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    artifact_id: Mapped[str] = mapped_column(ForeignKey("campaign_artifacts.id"), index=True)
+    campaign_id: Mapped[str] = mapped_column(ForeignKey("campaigns.id"), index=True)
+    artifact_type: Mapped[str] = mapped_column(String, index=True)
+    content: Mapped[str] = mapped_column(Text)
+    source: Mapped[str] = mapped_column(String)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class ApprovalEvent(Base):
     __tablename__ = "approval_events"
 

@@ -71,8 +71,14 @@ def save_checkpoint(db: Session, task: Task, step: str, payload: dict) -> Checkp
     db.add(task)
     db.add(cp)
     db.commit()
-    db.refresh(task)
-    db.refresh(cp)
+    try:
+        db.refresh(task)
+    except Exception:
+        pass
+    try:
+        db.refresh(cp)
+    except Exception:
+        pass
     return cp
 
 

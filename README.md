@@ -32,6 +32,8 @@ This repository implements the AI Marketing Agent MVP with:
 - `GET /projects/{id}/campaigns/{campaign_id}/artifacts`
 - `POST /projects/{id}/campaigns/{campaign_id}/artifacts/regenerate`
 - `PUT /projects/{id}/campaigns/{campaign_id}/artifacts/{artifact_id}`
+- `GET /projects/{id}/campaigns/{campaign_id}/artifacts/{artifact_id}/revisions`
+- `POST /projects/{id}/campaigns/{campaign_id}/artifacts/{artifact_id}/restore`
 - `POST /memory/purge`
 - `DELETE /projects/{id}/uploads/{upload_id}`
 

@@ -186,6 +186,9 @@
           <select id="edit_artifact_id" onchange="selectArtifactForEdit(this.value)"></select>
           <textarea id="edit_content" placeholder="Select an artifact to edit"></textarea>
           <button onclick="saveArtifactEdit()">Save Artifact Edit</button>
+          <label>Revision History</label>
+          <select id="revision_id"></select>
+          <button class="secondary" onclick="restoreRevision()">Restore Selected Revision</button>
           <pre id="out_artifacts"></pre>
         </article>
       </section>
@@ -487,6 +490,7 @@
         const artifact = state.artifacts.find((a) => a.id === artifactId);
         if (!artifact) return;
         qs("edit_content").value = artifact.content || "";
+        loadRevisions(artifactId);
       }
 
       async function saveArtifactEdit() {
@@ -501,8 +505,48 @@
           });
           setOut("out_campaign", out);
           await loadArtifacts();
+          await loadRevisions(artifactId);
           renderState();
         } catch (e) { renderState(String(e)); }
+      }
+
+      async function loadRevisions(artifactId) {
+        if (!state.projectId || !state.campaignId || !artifactId) return;
+        try {
+          const out = await api(`/projects/${state.projectId}/campaigns/${state.campaignId}/artifacts/${artifactId}/revisions`);
+          const sel = qs("revision_id");
+          sel.innerHTML = "";
+          out.forEach((r) => {
+            const opt = document.createElement("option");
+            opt.value = r.id;
+            opt.textContent = `${r.source} • ${r.id.slice(0, 8)}`;
+            sel.appendChild(opt);
+          });
+          if (out.length) sel.value = out[0].id;
+        } catch (e) {
+          renderState(String(e));
+        }
+      }
+
+      async function restoreRevision() {
+        if (!state.projectId || !state.campaignId) return renderState("Select a campaign first.");
+        const artifactId = qs("edit_artifact_id").value;
+        const revisionId = qs("revision_id").value;
+        if (!artifactId || !revisionId) return renderState("Select artifact and revision first.");
+        try {
+          const out = await api(`/projects/${state.projectId}/campaigns/${state.campaignId}/artifacts/${artifactId}/restore`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ revision_id: revisionId }),
+          });
+          setOut("out_campaign", out);
+          await loadArtifacts();
+          await loadRevisions(artifactId);
+          selectArtifactForEdit(artifactId);
+          renderState();
+        } catch (e) {
+          renderState(String(e));
+        }
       }
 
       refreshProjects();
