@@ -36,3 +36,28 @@ def test_task_state_transitions_and_recovery() -> None:
         assert recovered.retries == 1
     finally:
         db.close()
+
+
+def test_transition_uses_latest_db_status_not_stale_object() -> None:
+    db = SessionLocal()
+    try:
+        project = Project(tenant_id="t2", name="Stale Check", niche_tags=[])
+        db.add(project)
+        db.commit()
+        db.refresh(project)
+
+        task = create_task(
+            db,
+            project_id=project.id,
+            task_type="campaign_generate",
+            owner_agent="SupervisorAgent",
+            idempotency_key="k2",
+        )
+        transition_task(db, task, TaskStatus.running)
+
+        # Simulate stale in-memory state.
+        task.status = TaskStatus.queued.value
+        transitioned = transition_task(db, task, TaskStatus.completed)
+        assert transitioned.status == TaskStatus.completed.value
+    finally:
+        db.close()

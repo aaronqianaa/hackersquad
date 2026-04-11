@@ -34,16 +34,25 @@ def _as_aware(dt: datetime) -> datetime:
 
 
 def transition_task(db: Session, task: Task, to_status: TaskStatus, reason: str | None = None) -> Task:
-    if to_status.value not in VALID_TRANSITIONS.get(task.status, set()):
-        raise ValueError(f"Invalid task transition: {task.status} -> {to_status.value}")
-    task.status = to_status.value
+    current = task
+    if task.id:
+        try:
+            db.refresh(task)
+            current = task
+        except Exception:
+            current = db.get(Task, task.id)
+    if current is None:
+        raise ValueError("Task not found for transition")
+    if to_status.value not in VALID_TRANSITIONS.get(current.status, set()):
+        raise ValueError(f"Invalid task transition: {current.status} -> {to_status.value}")
+    current.status = to_status.value
     if reason:
-        task.error_reason = reason
-    task.updated_at = utcnow()
-    db.add(task)
+        current.error_reason = reason
+    current.updated_at = utcnow()
+    db.add(current)
     db.commit()
-    db.refresh(task)
-    return task
+    db.refresh(current)
+    return current
 
 
 def heartbeat(db: Session, task: Task) -> Task:
