@@ -24,6 +24,7 @@ from app.models import (
 )
 from app.schemas import (
     ArtifactRegenerateRequest,
+    ArtifactUpdateRequest,
     CampaignListOut,
     CampaignApprovalRequest,
     CampaignArtifactOut,
@@ -298,6 +299,39 @@ def regenerate_artifact(
         artifact = supervisor.regenerate_artifact(db, project_id, campaign_id, payload.artifact_type)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return CampaignArtifactOut(
+        id=artifact.id,
+        artifact_type=artifact.artifact_type,
+        content=artifact.content,
+        created_at=artifact.created_at,
+    )
+
+
+@router.put("/projects/{project_id}/campaigns/{campaign_id}/artifacts/{artifact_id}", response_model=CampaignArtifactOut)
+def update_artifact(
+    project_id: str,
+    campaign_id: str,
+    artifact_id: str,
+    payload: ArtifactUpdateRequest,
+    db: Session = Depends(get_db),
+    auth: AuthContext = Depends(get_auth_context),
+) -> CampaignArtifactOut:
+    require_project_access(db, project_id, auth)
+    campaign = db.query(Campaign).filter(Campaign.id == campaign_id, Campaign.project_id == project_id).first()
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    artifact = (
+        db.query(CampaignArtifact)
+        .filter(CampaignArtifact.id == artifact_id, CampaignArtifact.campaign_id == campaign_id)
+        .first()
+    )
+    if not artifact:
+        raise HTTPException(status_code=404, detail="Artifact not found")
+    artifact.content = payload.content
+    artifact.provenance = {"edited": True, "edited_at": datetime.now(timezone.utc).isoformat()}
+    db.add(artifact)
+    db.commit()
+    db.refresh(artifact)
     return CampaignArtifactOut(
         id=artifact.id,
         artifact_type=artifact.artifact_type,

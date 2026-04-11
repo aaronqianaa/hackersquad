@@ -182,6 +182,10 @@
             <button class="secondary" onclick="copyArtifacts()">Copy Artifacts JSON</button>
             <button class="secondary" onclick="exportArtifacts()">Export Artifacts File</button>
           </div>
+          <label>Edit Artifact</label>
+          <select id="edit_artifact_id" onchange="selectArtifactForEdit(this.value)"></select>
+          <textarea id="edit_content" placeholder="Select an artifact to edit"></textarea>
+          <button onclick="saveArtifactEdit()">Save Artifact Edit</button>
           <pre id="out_artifacts"></pre>
         </article>
       </section>
@@ -404,6 +408,7 @@
         try {
           const out = await api(`/projects/${state.projectId}/campaigns/${state.campaignId}/artifacts`);
           state.artifacts = out;
+          populateArtifactEditor();
           setOut("out_artifacts", out);
           await refreshCampaigns();
           renderState();
@@ -459,6 +464,45 @@
         a.click();
         a.remove();
         URL.revokeObjectURL(url);
+      }
+
+      function populateArtifactEditor() {
+        const sel = qs("edit_artifact_id");
+        sel.innerHTML = "";
+        if (!state.artifacts.length) {
+          qs("edit_content").value = "";
+          return;
+        }
+        state.artifacts.forEach((a) => {
+          const opt = document.createElement("option");
+          opt.value = a.id;
+          opt.textContent = `${a.artifact_type} (${a.id.slice(0, 8)})`;
+          sel.appendChild(opt);
+        });
+        sel.value = state.artifacts[0].id;
+        qs("edit_content").value = state.artifacts[0].content || "";
+      }
+
+      function selectArtifactForEdit(artifactId) {
+        const artifact = state.artifacts.find((a) => a.id === artifactId);
+        if (!artifact) return;
+        qs("edit_content").value = artifact.content || "";
+      }
+
+      async function saveArtifactEdit() {
+        if (!state.projectId || !state.campaignId) return renderState("Select a campaign first.");
+        const artifactId = qs("edit_artifact_id").value;
+        if (!artifactId) return renderState("Load artifacts first.");
+        try {
+          const out = await api(`/projects/${state.projectId}/campaigns/${state.campaignId}/artifacts/${artifactId}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ content: qs("edit_content").value }),
+          });
+          setOut("out_campaign", out);
+          await loadArtifacts();
+          renderState();
+        } catch (e) { renderState(String(e)); }
       }
 
       refreshProjects();

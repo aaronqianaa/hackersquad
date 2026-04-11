@@ -115,3 +115,22 @@ def test_regenerate_single_artifact_endpoint() -> None:
     assert artifacts_resp.status_code == 200
     emails = [a for a in artifacts_resp.json() if a["artifact_type"] == "email"]
     assert len(emails) >= 1
+
+
+def test_update_single_artifact_content_endpoint() -> None:
+    project_id = _create_project_with_selection_and_upload()
+    _, campaign_id, task_payload = _start_and_wait_campaign(project_id, "campaign-flow-edit")
+    assert task_payload["status"] == "completed"
+
+    artifacts_resp = client.get(f"/projects/{project_id}/campaigns/{campaign_id}/artifacts")
+    assert artifacts_resp.status_code == 200
+    artifacts = artifacts_resp.json()
+    assert len(artifacts) > 0
+    target = artifacts[0]
+
+    updated = client.put(
+        f"/projects/{project_id}/campaigns/{campaign_id}/artifacts/{target['id']}",
+        json={"content": "Edited manually from test"},
+    )
+    assert updated.status_code == 200
+    assert updated.json()["content"] == "Edited manually from test"

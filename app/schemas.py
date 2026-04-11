@@ -76,6 +76,10 @@ class ArtifactRegenerateRequest(BaseModel):
     artifact_type: str
 
 
+class ArtifactUpdateRequest(BaseModel):
+    content: str
+
+
 class CampaignArtifactOut(BaseModel):
     id: str
     artifact_type: str
