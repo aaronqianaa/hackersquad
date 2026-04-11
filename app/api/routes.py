@@ -23,6 +23,7 @@ from app.models import (
     TrendRecommendation,
 )
 from app.schemas import (
+    CampaignListOut,
     CampaignApprovalRequest,
     CampaignArtifactOut,
     CampaignGenerateRequest,
@@ -70,6 +71,17 @@ def require_project_access(db: Session, project_id: str, auth: AuthContext) -> P
     return project
 
 
+def to_project_out(project: Project) -> ProjectOut:
+    return ProjectOut(
+        id=project.id,
+        tenant_id=project.tenant_id,
+        name=project.name,
+        niche_tags=project.niche_tags,
+        selected_recommendation_id=project.selected_recommendation_id,
+        created_at=project.created_at,
+    )
+
+
 @router.post("/projects", response_model=ProjectOut)
 def create_project(
     payload: ProjectCreate,
@@ -82,14 +94,19 @@ def create_project(
     db.add(project)
     db.commit()
     db.refresh(project)
-    return ProjectOut(
-        id=project.id,
-        tenant_id=project.tenant_id,
-        name=project.name,
-        niche_tags=project.niche_tags,
-        selected_recommendation_id=project.selected_recommendation_id,
-        created_at=project.created_at,
-    )
+    return to_project_out(project)
+
+
+@router.get("/projects", response_model=list[ProjectOut])
+def list_projects(
+    db: Session = Depends(get_db),
+    auth: AuthContext = Depends(get_auth_context),
+) -> list[ProjectOut]:
+    query = db.query(Project)
+    if auth.tenant_id:
+        query = query.filter(Project.tenant_id == auth.tenant_id)
+    projects = query.order_by(Project.created_at.desc()).all()
+    return [to_project_out(project) for project in projects]
 
 
 @router.post("/projects/{project_id}/trend-scan", response_model=TaskOut)
@@ -217,6 +234,17 @@ def get_task(
     return to_task_out(task)
 
 
+@router.get("/projects/{project_id}/tasks", response_model=list[TaskOut])
+def list_tasks(
+    project_id: str,
+    db: Session = Depends(get_db),
+    auth: AuthContext = Depends(get_auth_context),
+) -> list[TaskOut]:
+    require_project_access(db, project_id, auth)
+    tasks = db.query(Task).filter(Task.project_id == project_id).order_by(Task.created_at.desc()).all()
+    return [to_task_out(task) for task in tasks]
+
+
 @router.post("/projects/{project_id}/campaigns/{campaign_id}/approve")
 def approve_campaign(
     project_id: str,
@@ -254,6 +282,29 @@ def list_artifacts(
         CampaignArtifactOut(id=a.id, artifact_type=a.artifact_type, content=a.content, created_at=a.created_at)
         for a in artifacts
     ]
+
+
+@router.get("/projects/{project_id}/campaigns", response_model=list[CampaignListOut])
+def list_campaigns(
+    project_id: str,
+    db: Session = Depends(get_db),
+    auth: AuthContext = Depends(get_auth_context),
+) -> list[CampaignListOut]:
+    require_project_access(db, project_id, auth)
+    campaigns = db.query(Campaign).filter(Campaign.project_id == project_id).order_by(Campaign.created_at.desc()).all()
+    out: list[CampaignListOut] = []
+    for campaign in campaigns:
+        artifact_count = db.query(CampaignArtifact).filter(CampaignArtifact.campaign_id == campaign.id).count()
+        out.append(
+            CampaignListOut(
+                id=campaign.id,
+                project_id=campaign.project_id,
+                status=campaign.status,
+                created_at=campaign.created_at,
+                artifact_count=artifact_count,
+            )
+        )
+    return out
 
 
 @router.post("/memory/purge", response_model=PurgeMemoryResponse)

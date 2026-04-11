@@ -3,17 +3,16 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Hackersquad Agent Console</title>
+    <title>Hackersquad Operator Console</title>
     <style>
       :root {
-        --bg: #f4f8f4;
+        --bg: #f3f7f2;
         --panel: #ffffff;
-        --text: #152319;
-        --muted: #5f7163;
-        --line: #d7e2d9;
-        --brand: #215732;
-        --brand-soft: #e4efe6;
-        --warn: #a15c00;
+        --text: #132117;
+        --muted: #5d6f61;
+        --line: #d5e1d6;
+        --brand: #1f5933;
+        --brand-soft: #e5efe7;
       }
       * { box-sizing: border-box; }
       body {
@@ -21,187 +20,176 @@
         font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
         color: var(--text);
         background:
-          radial-gradient(circle at 10% -10%, #d8ead9 0%, transparent 35%),
-          radial-gradient(circle at 90% 10%, #cde5d3 0%, transparent 30%),
+          radial-gradient(circle at 0% 0%, #dbe9dc 0%, transparent 32%),
+          radial-gradient(circle at 100% 0%, #d3e5d8 0%, transparent 28%),
           var(--bg);
       }
-      .shell {
-        max-width: 1080px;
-        margin: 24px auto;
-        padding: 0 16px 40px;
-      }
-      .hero {
-        padding: 20px;
-        border: 1px solid var(--line);
-        border-radius: 16px;
-        background: linear-gradient(120deg, #ffffff, #f8fbf8);
-      }
-      .hero h1 {
-        margin: 0;
-        font-size: 1.8rem;
-        letter-spacing: -0.02em;
-      }
-      .hero p {
-        margin: 8px 0 0;
-        color: var(--muted);
-      }
-      .grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(310px, 1fr));
-        gap: 14px;
-        margin-top: 14px;
-      }
-      .card {
+      .shell { max-width: 1180px; margin: 20px auto; padding: 0 16px 36px; }
+      .hero, .card {
         border: 1px solid var(--line);
         border-radius: 14px;
-        padding: 14px;
         background: var(--panel);
       }
-      .card h3 {
-        margin: 0 0 8px;
-        font-size: 1rem;
-      }
-      .card p {
-        margin: 0 0 10px;
-        color: var(--muted);
-        font-size: 0.92rem;
-      }
-      label {
-        display: block;
-        margin: 8px 0 4px;
-        font-size: 0.85rem;
-        color: var(--muted);
-      }
-      input, textarea, button {
-        width: 100%;
-        border-radius: 10px;
-        border: 1px solid var(--line);
-        font: inherit;
-      }
-      input, textarea {
-        padding: 10px;
-        background: #fff;
-      }
-      textarea {
-        resize: vertical;
-        min-height: 68px;
-      }
-      button {
-        margin-top: 10px;
-        padding: 10px 12px;
-        cursor: pointer;
-        border: 1px solid var(--brand);
-        background: var(--brand);
-        color: #fff;
-        transition: transform 120ms ease, filter 120ms ease;
-      }
-      button:hover { transform: translateY(-1px); filter: brightness(1.04); }
-      .quiet {
-        border-color: var(--line);
-        background: var(--brand-soft);
-        color: var(--text);
-      }
-      pre {
-        margin: 10px 0 0;
-        padding: 10px;
-        border-radius: 10px;
-        background: #0f1712;
-        color: #d2f0dc;
-        overflow-x: auto;
-        font-size: 0.8rem;
-      }
-      .state {
-        margin-top: 12px;
-        padding: 10px;
-        border-radius: 10px;
-        background: #fbfdfb;
-        border: 1px solid var(--line);
-        color: var(--muted);
-      }
+      .hero { padding: 16px; }
+      .hero h1 { margin: 0; font-size: 1.55rem; letter-spacing: -0.02em; }
+      .hero p { margin: 8px 0 0; color: var(--muted); }
+      .state { margin-top: 10px; padding: 8px; border-radius: 10px; background: #f9fbf9; color: var(--muted); }
       .pill {
         display: inline-block;
         margin-right: 6px;
         margin-bottom: 6px;
         padding: 4px 8px;
         border-radius: 999px;
-        background: var(--brand-soft);
         border: 1px solid var(--line);
+        background: var(--brand-soft);
         font-size: 0.78rem;
       }
-      .warn { color: var(--warn); }
+      .grid { margin-top: 12px; display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 12px; }
+      .card { padding: 12px; }
+      .card h3 { margin: 0 0 8px; font-size: 1rem; }
+      .card p { margin: 0 0 8px; color: var(--muted); font-size: 0.9rem; }
+      label { display: block; margin: 8px 0 4px; font-size: 0.82rem; color: var(--muted); }
+      input, select, button, textarea {
+        width: 100%;
+        font: inherit;
+        border-radius: 10px;
+        border: 1px solid var(--line);
+      }
+      input, select, textarea { padding: 9px; background: #fff; }
+      textarea { min-height: 78px; resize: vertical; }
+      button {
+        margin-top: 8px;
+        padding: 9px 11px;
+        cursor: pointer;
+        border-color: var(--brand);
+        background: var(--brand);
+        color: #fff;
+      }
+      button.secondary {
+        background: var(--brand-soft);
+        color: var(--text);
+        border-color: var(--line);
+      }
+      .row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+      pre {
+        margin: 8px 0 0;
+        padding: 10px;
+        border-radius: 10px;
+        background: #101713;
+        color: #cef1dc;
+        font-size: 0.78rem;
+        overflow-x: auto;
+      }
+      .listbox {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 8px;
+        max-height: 180px;
+        overflow: auto;
+        background: #fbfdfb;
+      }
+      .list-item {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        padding: 6px 0;
+        border-bottom: 1px dashed var(--line);
+        font-size: 0.82rem;
+      }
+      .list-item:last-child { border-bottom: 0; }
     </style>
   </head>
   <body>
     <main class="shell">
       <section class="hero">
-        <h1>Hackersquad AI Marketing Agent</h1>
-        <p>One-screen console for project setup, trend scan, product upload, campaign generation, and artifact review.</p>
+        <h1>Hackersquad Operator Console</h1>
+        <p>Single-user dashboard for running campaigns, monitoring tasks, approving outputs, and exporting artifacts.</p>
         <div class="state" id="state"></div>
       </section>
 
       <section class="grid">
         <article class="card">
-          <h3>1. Create Project</h3>
+          <h3>Project Setup</h3>
           <label>Tenant ID</label>
           <input id="tenant_id" value="tenant-demo" />
           <label>Project Name</label>
           <input id="project_name" value="Demo Product Launch" />
-          <label>Niche Tags (comma separated)</label>
+          <label>Niche Tags</label>
           <input id="niche_tags" value="skincare,dtc" />
           <button onclick="createProject()">Create Project</button>
+          <button class="secondary" onclick="refreshProjects()">Refresh Projects</button>
+          <label>Projects</label>
+          <select id="project_select" onchange="chooseProject(this.value)"></select>
           <pre id="out_project"></pre>
         </article>
 
         <article class="card">
-          <h3>2. Trend Scan</h3>
-          <p>Fetch trend recommendations worth studying.</p>
-          <button onclick="runTrendScan()">Run Trend Scan</button>
-          <button class="quiet" onclick="loadRecommendations()">Load Recommendations</button>
+          <h3>Trend + Reference</h3>
+          <div class="row">
+            <button onclick="runTrendScan()">Run Trend Scan</button>
+            <button class="secondary" onclick="loadRecommendations()">Load Recommendations</button>
+          </div>
           <label>Recommendation ID</label>
-          <input id="recommendation_id" placeholder="Paste one recommendation ID" />
+          <input id="recommendation_id" placeholder="recommendation id" />
           <button onclick="selectReference()">Select Reference Page</button>
           <pre id="out_trend"></pre>
         </article>
 
         <article class="card">
-          <h3>3. Upload Product Photo</h3>
+          <h3>Upload + Generate</h3>
           <input id="product_file" type="file" accept="image/*" />
-          <button onclick="uploadImage()">Upload Image</button>
-          <pre id="out_upload"></pre>
+          <button onclick="uploadImage()">Upload Product Image</button>
+          <label>Idempotency Key</label>
+          <input id="idem_key" />
+          <button onclick="generateCampaign()">Generate Campaign</button>
+          <button class="secondary" onclick="pollTask()">Poll Task</button>
+          <label><input id="auto_poll" type="checkbox" style="width:auto; margin-right:6px;" onchange="toggleAutoPoll()" />Auto-poll task (1s)</label>
+          <pre id="out_campaign"></pre>
         </article>
 
         <article class="card">
-          <h3>4. Generate Campaign</h3>
-          <label>Idempotency Key</label>
-          <input id="idem_key" value="" />
-          <button onclick="generateCampaign()">Generate Campaign</button>
-          <button class="quiet" onclick="pollTask()">Poll Task Status</button>
-          <button class="quiet" onclick="loadArtifacts()">Load Artifacts</button>
-          <pre id="out_campaign"></pre>
+          <h3>History + Ops</h3>
+          <div class="row">
+            <button class="secondary" onclick="refreshCampaigns()">Refresh Campaigns</button>
+            <button class="secondary" onclick="refreshTasks()">Refresh Tasks</button>
+          </div>
+          <button class="secondary" onclick="loadOpsSummary()">Load Ops Summary</button>
+          <div class="listbox" id="campaign_list"></div>
+          <div class="listbox" id="task_list" style="margin-top:8px;"></div>
+          <pre id="out_ops"></pre>
+        </article>
+
+        <article class="card" style="grid-column: 1 / -1;">
+          <h3>Artifacts + Approval</h3>
+          <div class="row">
+            <button onclick="loadArtifacts()">Load Artifacts</button>
+            <button onclick="approveCampaign()">Approve Campaign</button>
+          </div>
+          <div class="row">
+            <button class="secondary" onclick="copyArtifacts()">Copy Artifacts JSON</button>
+            <button class="secondary" onclick="exportArtifacts()">Export Artifacts File</button>
+          </div>
+          <pre id="out_artifacts"></pre>
         </article>
       </section>
     </main>
 
     <script>
-      const state = {
-        projectId: "",
-        recommendationId: "",
-        taskId: "",
-        campaignId: "",
-      };
+      const state = { projectId: "", recommendationId: "", taskId: "", campaignId: "", artifacts: [] };
+      let pollTimer = null;
 
       const qs = (id) => document.getElementById(id);
       const pretty = (obj) => JSON.stringify(obj, null, 2);
-      const setOut = (id, obj) => { qs(id).textContent = typeof obj === "string" ? obj : pretty(obj); };
       const nowKey = () => "ui-" + Date.now();
+      const setOut = (id, obj) => { qs(id).textContent = typeof obj === "string" ? obj : pretty(obj); };
 
-      function renderState(extra = "") {
+      function renderState(err = "") {
         qs("state").innerHTML = `
           <span class="pill">project: ${state.projectId || "-"}</span>
           <span class="pill">recommendation: ${state.recommendationId || "-"}</span>
           <span class="pill">task: ${state.taskId || "-"}</span>
           <span class="pill">campaign: ${state.campaignId || "-"}</span>
-          ${extra ? `<div class="warn">${extra}</div>` : ""}
+          ${err ? `<div style="color:#9a5a00">${err}</div>` : ""}
         `;
       }
       renderState();
@@ -218,113 +206,235 @@
 
       async function createProject() {
         try {
-          const nicheTags = qs("niche_tags").value.split(",").map((s) => s.trim()).filter(Boolean);
           const payload = {
             tenant_id: qs("tenant_id").value.trim(),
             name: qs("project_name").value.trim(),
-            niche_tags: nicheTags,
+            niche_tags: qs("niche_tags").value.split(",").map((x) => x.trim()).filter(Boolean),
           };
-          const data = await api("/projects", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
-          });
-          state.projectId = data.id;
-          setOut("out_project", data);
+          const out = await api("/projects", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+          state.projectId = out.id;
+          setOut("out_project", out);
+          await refreshProjects();
+          await refreshCampaigns();
+          await refreshTasks();
           renderState();
-        } catch (err) { renderState(String(err)); }
+        } catch (e) { renderState(String(e)); }
+      }
+
+      async function refreshProjects() {
+        try {
+          const projects = await api("/projects");
+          const sel = qs("project_select");
+          sel.innerHTML = "";
+          for (const p of projects) {
+            const opt = document.createElement("option");
+            opt.value = p.id;
+            opt.textContent = `${p.name} (${p.id.slice(0, 8)})`;
+            sel.appendChild(opt);
+          }
+          if (!state.projectId && projects.length) state.projectId = projects[0].id;
+          if (state.projectId) sel.value = state.projectId;
+          renderState();
+        } catch (e) { renderState(String(e)); }
+      }
+
+      async function chooseProject(projectId) {
+        state.projectId = projectId;
+        state.recommendationId = "";
+        state.taskId = "";
+        state.campaignId = "";
+        state.artifacts = [];
+        await refreshCampaigns();
+        await refreshTasks();
+        renderState();
       }
 
       async function runTrendScan() {
-        if (!state.projectId) return renderState("Create a project first.");
+        if (!state.projectId) return renderState("Select/create a project first.");
         try {
-          const data = await api(`/projects/${state.projectId}/trend-scan`, {
+          const out = await api(`/projects/${state.projectId}/trend-scan`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ force_refresh: true }),
           });
-          setOut("out_trend", data);
+          setOut("out_trend", out);
+          await refreshTasks();
           renderState();
-        } catch (err) { renderState(String(err)); }
+        } catch (e) { renderState(String(e)); }
       }
 
       async function loadRecommendations() {
-        if (!state.projectId) return renderState("Create a project first.");
+        if (!state.projectId) return renderState("Select/create a project first.");
         try {
-          const data = await api(`/projects/${state.projectId}/recommendations`);
-          setOut("out_trend", data);
-          if (data.length) {
-            state.recommendationId = data[0].id;
-            qs("recommendation_id").value = data[0].id;
+          const out = await api(`/projects/${state.projectId}/recommendations`);
+          setOut("out_trend", out);
+          if (out.length) {
+            state.recommendationId = out[0].id;
+            qs("recommendation_id").value = out[0].id;
           }
           renderState();
-        } catch (err) { renderState(String(err)); }
+        } catch (e) { renderState(String(e)); }
       }
 
       async function selectReference() {
-        if (!state.projectId) return renderState("Create a project first.");
+        if (!state.projectId) return renderState("Select/create a project first.");
         try {
           state.recommendationId = qs("recommendation_id").value.trim();
-          const data = await api(`/projects/${state.projectId}/reference-page/select`, {
+          const out = await api(`/projects/${state.projectId}/reference-page/select`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ recommendation_id: state.recommendationId }),
           });
-          setOut("out_trend", data);
+          setOut("out_trend", out);
           renderState();
-        } catch (err) { renderState(String(err)); }
+        } catch (e) { renderState(String(e)); }
       }
 
       async function uploadImage() {
-        if (!state.projectId) return renderState("Create a project first.");
+        if (!state.projectId) return renderState("Select/create a project first.");
         const file = qs("product_file").files[0];
-        if (!file) return renderState("Pick a product image file first.");
+        if (!file) return renderState("Choose a product image first.");
         try {
           const form = new FormData();
           form.append("file", file);
-          const data = await api(`/projects/${state.projectId}/uploads/product-image`, {
-            method: "POST",
-            body: form,
-          });
-          setOut("out_upload", data);
+          const out = await api(`/projects/${state.projectId}/uploads/product-image`, { method: "POST", body: form });
+          setOut("out_project", out);
           renderState();
-        } catch (err) { renderState(String(err)); }
+        } catch (e) { renderState(String(e)); }
       }
 
       async function generateCampaign() {
-        if (!state.projectId) return renderState("Create a project first.");
+        if (!state.projectId) return renderState("Select/create a project first.");
         try {
           const key = qs("idem_key").value.trim() || nowKey();
           qs("idem_key").value = key;
-          const data = await api(`/projects/${state.projectId}/campaigns/generate`, {
+          const out = await api(`/projects/${state.projectId}/campaigns/generate`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ idempotency_key: key }),
           });
-          state.taskId = data.task_id;
-          state.campaignId = data.campaign_id;
-          setOut("out_campaign", data);
+          state.taskId = out.task_id;
+          state.campaignId = out.campaign_id;
+          setOut("out_campaign", out);
+          await refreshCampaigns();
+          await refreshTasks();
           renderState();
-        } catch (err) { renderState(String(err)); }
+        } catch (e) { renderState(String(e)); }
       }
 
       async function pollTask() {
-        if (!state.projectId || !state.taskId) return renderState("Generate a campaign first.");
+        if (!state.projectId || !state.taskId) return renderState("Generate/select a campaign first.");
         try {
-          const data = await api(`/projects/${state.projectId}/tasks/${state.taskId}`);
-          setOut("out_campaign", data);
+          const out = await api(`/projects/${state.projectId}/tasks/${state.taskId}`);
+          setOut("out_campaign", out);
+          await refreshTasks();
           renderState();
-        } catch (err) { renderState(String(err)); }
+        } catch (e) { renderState(String(e)); }
+      }
+
+      function toggleAutoPoll() {
+        if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+        if (qs("auto_poll").checked) {
+          pollTimer = setInterval(() => { pollTask(); }, 1000);
+        }
+      }
+
+      async function refreshCampaigns() {
+        if (!state.projectId) return;
+        try {
+          const out = await api(`/projects/${state.projectId}/campaigns`);
+          const box = qs("campaign_list");
+          box.innerHTML = out.map((c) => `
+            <div class="list-item">
+              <span>${c.id.slice(0, 8)} • ${c.status} • artifacts:${c.artifact_count}</span>
+              <button class="secondary" style="width:auto; padding:4px 8px; margin:0;" onclick="selectCampaign('${c.id}')">Use</button>
+            </div>
+          `).join("") || "<div style='color:#6a7f6f'>No campaigns yet</div>";
+        } catch (e) { renderState(String(e)); }
+      }
+
+      function selectCampaign(id) {
+        state.campaignId = id;
+        renderState();
+        loadArtifacts();
+      }
+
+      async function refreshTasks() {
+        if (!state.projectId) return;
+        try {
+          const out = await api(`/projects/${state.projectId}/tasks`);
+          const box = qs("task_list");
+          box.innerHTML = out.map((t) => `
+            <div class="list-item">
+              <span>${t.id.slice(0, 8)} • ${t.task_type} • ${t.status}</span>
+              <button class="secondary" style="width:auto; padding:4px 8px; margin:0;" onclick="selectTask('${t.id}')">Use</button>
+            </div>
+          `).join("") || "<div style='color:#6a7f6f'>No tasks yet</div>";
+        } catch (e) { renderState(String(e)); }
+      }
+
+      function selectTask(id) {
+        state.taskId = id;
+        renderState();
+        pollTask();
+      }
+
+      async function loadOpsSummary() {
+        try {
+          const out = await api("/ops/tasks/summary");
+          setOut("out_ops", out);
+        } catch (e) { renderState(String(e)); }
       }
 
       async function loadArtifacts() {
-        if (!state.projectId || !state.campaignId) return renderState("Generate a campaign first.");
+        if (!state.projectId || !state.campaignId) return renderState("Select a campaign first.");
         try {
-          const data = await api(`/projects/${state.projectId}/campaigns/${state.campaignId}/artifacts`);
-          setOut("out_campaign", data);
+          const out = await api(`/projects/${state.projectId}/campaigns/${state.campaignId}/artifacts`);
+          state.artifacts = out;
+          setOut("out_artifacts", out);
+          await refreshCampaigns();
           renderState();
-        } catch (err) { renderState(String(err)); }
+        } catch (e) { renderState(String(e)); }
       }
+
+      async function approveCampaign() {
+        if (!state.projectId || !state.campaignId) return renderState("Select a campaign first.");
+        try {
+          const out = await api(`/projects/${state.projectId}/campaigns/${state.campaignId}/approve`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ approved_by: "operator", notes: "Approved from UI console" }),
+          });
+          setOut("out_campaign", out);
+          await refreshCampaigns();
+          renderState();
+        } catch (e) { renderState(String(e)); }
+      }
+
+      async function copyArtifacts() {
+        const payload = pretty(state.artifacts || []);
+        try {
+          await navigator.clipboard.writeText(payload);
+          renderState("Artifacts JSON copied to clipboard.");
+        } catch {
+          renderState("Clipboard unavailable. Use Export Artifacts File.");
+        }
+      }
+
+      function exportArtifacts() {
+        const blob = new Blob([pretty(state.artifacts || [])], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `artifacts-${state.campaignId || "campaign"}.json`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      }
+
+      refreshProjects();
+      loadOpsSummary();
     </script>
   </body>
 </html>

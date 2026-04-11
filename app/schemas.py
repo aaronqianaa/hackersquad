@@ -18,6 +18,14 @@ class ProjectOut(BaseModel):
     created_at: datetime
 
 
+class CampaignListOut(BaseModel):
+    id: str
+    project_id: str
+    status: str
+    created_at: datetime
+    artifact_count: int
+
+
 class TrendScanRequest(BaseModel):
     force_refresh: bool = False
 

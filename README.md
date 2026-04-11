@@ -19,12 +19,15 @@ This repository implements the AI Marketing Agent MVP with:
 
 ## Key API Endpoints
 - `POST /projects`
+- `GET /projects`
 - `POST /projects/{id}/trend-scan`
 - `GET /projects/{id}/recommendations`
 - `POST /projects/{id}/reference-page/select`
 - `POST /projects/{id}/uploads/product-image`
 - `POST /projects/{id}/campaigns/generate`
+- `GET /projects/{id}/tasks`
 - `GET /projects/{id}/tasks/{task_id}`
+- `GET /projects/{id}/campaigns`
 - `POST /projects/{id}/campaigns/{campaign_id}/approve`
 - `GET /projects/{id}/campaigns/{campaign_id}/artifacts`
 - `POST /memory/purge`
@@ -37,7 +40,7 @@ uvicorn app.main:app --reload
 ```
 
 Then open:
-- `http://127.0.0.1:8000/` for the UI console
+- `http://127.0.0.1:8000/` for the operator dashboard UI
 - `http://127.0.0.1:8000/docs` for Swagger
 
 ## Configure AI Provider
