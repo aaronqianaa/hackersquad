@@ -12,7 +12,6 @@ from app.core.config import settings
 from app.db import SessionLocal, get_db
 from app.models import (
     ApprovalEvent,
-    BrandPattern,
     Campaign,
     CampaignArtifact,
     CampaignArtifactRevision,
@@ -33,6 +32,7 @@ from app.schemas import (
     CampaignArtifactRevisionOut,
     CampaignGenerateRequest,
     CampaignGenerateResponse,
+    OpenAIKeyUpdateRequest,
     ProjectCreate,
     ProjectOut,
     PurgeMemoryRequest,
@@ -50,6 +50,12 @@ from app.services.task_manager import heartbeat_age_seconds
 
 router = APIRouter()
 supervisor = SupervisorAgent()
+
+
+@router.post("/settings/openai-key")
+def set_openai_key(payload: OpenAIKeyUpdateRequest) -> dict:
+    settings.openai_api_key = payload.api_key.strip()
+    return {"configured": bool(settings.openai_api_key)}
 
 
 def to_task_out(task: Task) -> TaskOut:
@@ -162,9 +168,16 @@ def select_reference_page(
 ) -> dict:
     project = require_project_access(db, project_id, auth)
     try:
-        pattern = supervisor.select_reference_page(db, project, payload.recommendation_id)
+        pattern = supervisor.select_reference_page(
+            db,
+            project,
+            recommendation_id=payload.recommendation_id,
+            source_url=payload.source_url,
+            title=payload.title,
+        )
     except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        status_code = 404 if "not found" in str(exc).lower() else 400
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
 
     return {
         "brand_pattern_id": pattern.id,
@@ -299,7 +312,13 @@ def regenerate_artifact(
 ) -> CampaignArtifactOut:
     require_project_access(db, project_id, auth)
     try:
-        artifact = supervisor.regenerate_artifact(db, project_id, campaign_id, payload.artifact_type)
+        artifact = supervisor.regenerate_artifact(
+            db,
+            project_id,
+            campaign_id,
+            payload.artifact_type,
+            instruction=payload.instruction,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return CampaignArtifactOut(

@@ -192,9 +192,23 @@ class CampaignGeneratorAgent:
             "product_angles": fallback["product_angles"],
         }
 
-    def run(self, brand_pattern: dict, product_context: dict) -> dict:
+    def run(
+        self,
+        brand_pattern: dict,
+        product_context: dict,
+        artifact_instructions: dict[str, str] | None = None,
+    ) -> dict:
         fallback = self._fallback_bundle(brand_pattern, product_context)
-        prompts = {artifact_type: build_prompt(artifact_type, brand_pattern, product_context) for artifact_type in ARTIFACT_TYPES}
+        instructions = artifact_instructions or {}
+        prompts = {
+            artifact_type: build_prompt(
+                artifact_type,
+                brand_pattern,
+                product_context,
+                instruction=instructions.get(artifact_type),
+            )
+            for artifact_type in ARTIFACT_TYPES
+        }
         prompt_versions = {artifact_type: prompt_version_for(artifact_type) for artifact_type in ARTIFACT_TYPES}
         bundle = {
             "hero": self._generate_hero(prompts["hero"], fallback["hero"]),
@@ -207,6 +221,7 @@ class CampaignGeneratorAgent:
             "page_draft": self._generate_text_artifact(prompts["page_draft"], fallback["page_draft"]),
             "creative_brief": self._generate_creative_brief(prompts["creative_brief"], fallback["creative_brief"]),
             "_prompt_versions": prompt_versions,
+            "_artifact_instructions": instructions,
         }
         return bundle
 

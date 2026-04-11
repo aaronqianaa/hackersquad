@@ -41,7 +41,9 @@ class TrendRecommendationOut(BaseModel):
 
 
 class ReferenceSelectRequest(BaseModel):
-    recommendation_id: str
+    recommendation_id: str | None = None
+    source_url: str | None = None
+    title: str | None = None
 
 
 class CampaignGenerateRequest(BaseModel):
@@ -67,6 +69,10 @@ class CampaignGenerateResponse(BaseModel):
     status: str
 
 
+class OpenAIKeyUpdateRequest(BaseModel):
+    api_key: str
+
+
 class CampaignApprovalRequest(BaseModel):
     approved_by: str
     notes: str | None = None
@@ -74,6 +80,7 @@ class CampaignApprovalRequest(BaseModel):
 
 class ArtifactRegenerateRequest(BaseModel):
     artifact_type: str
+    instruction: str | None = None
 
 
 class ArtifactUpdateRequest(BaseModel):

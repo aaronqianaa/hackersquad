@@ -19,8 +19,8 @@ class PromptTemplate:
     version: str
     instructions: str
 
-    def render(self, brand_pattern: dict, product_context: dict) -> str:
-        return (
+    def render(self, brand_pattern: dict, product_context: dict, instruction: str | None = None) -> str:
+        prompt = (
             f"{self.instructions}\n"
             "Brand pattern:\n"
             f"{json.dumps(brand_pattern, indent=2, sort_keys=True)}\n"
@@ -28,6 +28,9 @@ class PromptTemplate:
             f"{json.dumps(product_context, indent=2, sort_keys=True)}\n"
             "Keep claims realistic, use a clear CTA when relevant, and avoid unsupported promises."
         )
+        if instruction:
+            prompt = f"{prompt}\nRevision instruction:\n{instruction.strip()}"
+        return prompt
 
 
 PROMPT_TEMPLATES: dict[str, PromptTemplate] = {
@@ -88,11 +91,11 @@ PROMPT_TEMPLATES: dict[str, PromptTemplate] = {
 }
 
 
-def build_prompt(artifact_type: str, brand_pattern: dict, product_context: dict) -> str:
+def build_prompt(artifact_type: str, brand_pattern: dict, product_context: dict, instruction: str | None = None) -> str:
     template = PROMPT_TEMPLATES.get(artifact_type)
     if not template:
         raise ValueError(f"Unsupported artifact type: {artifact_type}")
-    return template.render(brand_pattern, product_context)
+    return template.render(brand_pattern, product_context, instruction=instruction)
 
 
 def prompt_version_for(artifact_type: str) -> str:

@@ -12,8 +12,12 @@ except Exception:  # pragma: no cover - optional import path for offline/test se
 
 class OpenAIProvider:
     def __init__(self) -> None:
-        self.enabled = bool(settings.openai_api_key) and OpenAI is not None
-        self._client = OpenAI(api_key=settings.openai_api_key) if self.enabled else None
+        pass
+
+    def _client(self) -> Any:
+        if not settings.openai_api_key or OpenAI is None:
+            return None
+        return OpenAI(api_key=settings.openai_api_key)
 
     def _get_output_text(self, response: Any) -> str:
         text = getattr(response, "output_text", "")
@@ -33,16 +37,18 @@ class OpenAIProvider:
             return ""
 
     def generate_text(self, prompt: str, *, model: str | None = None) -> str:
-        if not self.enabled or self._client is None:
+        client = self._client()
+        if client is None:
             return ""
-        response = self._client.responses.create(
+        response = client.responses.create(
             model=model or settings.openai_model,
             input=prompt,
         )
         return self._get_output_text(response)
 
     def analyze_image(self, image_path: str, prompt: str, *, model: str | None = None) -> str:
-        if not self.enabled or self._client is None:
+        client = self._client()
+        if client is None:
             return ""
         path = Path(image_path)
         if not path.exists():
@@ -57,7 +63,7 @@ class OpenAIProvider:
 
         b64 = base64.b64encode(path.read_bytes()).decode("utf-8")
         data_url = f"data:{media_type};base64,{b64}"
-        response = self._client.responses.create(
+        response = client.responses.create(
             model=model or settings.openai_vision_model,
             input=[
                 {

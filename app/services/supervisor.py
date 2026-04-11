@@ -112,14 +112,44 @@ class SupervisorAgent:
         transition_task(db, task, TaskStatus.completed)
         return task
 
-    def select_reference_page(self, db: Session, project: Project, recommendation_id: str) -> BrandPattern:
-        recommendation = (
-            db.query(TrendRecommendation)
-            .filter(TrendRecommendation.id == recommendation_id, TrendRecommendation.project_id == project.id)
-            .first()
-        )
-        if not recommendation:
-            raise ValueError("Recommendation not found")
+    def select_reference_page(
+        self,
+        db: Session,
+        project: Project,
+        recommendation_id: str | None = None,
+        source_url: str | None = None,
+        title: str | None = None,
+    ) -> BrandPattern:
+        recommendation: TrendRecommendation | None = None
+        if recommendation_id:
+            recommendation = (
+                db.query(TrendRecommendation)
+                .filter(TrendRecommendation.id == recommendation_id, TrendRecommendation.project_id == project.id)
+                .first()
+            )
+            if not recommendation:
+                raise ValueError("Recommendation not found")
+        elif source_url and source_url.strip():
+            normalized_url = source_url.strip()
+            recommendation = TrendRecommendation(
+                project_id=project.id,
+                source_url=normalized_url,
+                title=(title or "Manual trend page").strip() or "Manual trend page",
+                score=1.0,
+                reasons=["manual_url"],
+                signals={
+                    "recency": 1.0,
+                    "engagement": 1.0,
+                    "structural_quality": 1.0,
+                    "niche_relevance": 1.0,
+                    "novelty": 1.0,
+                },
+                selected=False,
+            )
+            db.add(recommendation)
+            db.flush()
+        else:
+            raise ValueError("Provide a recommendation_id or source_url")
 
         db.query(TrendRecommendation).filter(TrendRecommendation.project_id == project.id).update({"selected": False})
         recommendation.selected = True
@@ -305,7 +335,14 @@ class SupervisorAgent:
         finally:
             db.close()
 
-    def regenerate_artifact(self, db: Session, project_id: str, campaign_id: str, artifact_type: str) -> CampaignArtifact:
+    def regenerate_artifact(
+        self,
+        db: Session,
+        project_id: str,
+        campaign_id: str,
+        artifact_type: str,
+        instruction: str | None = None,
+    ) -> CampaignArtifact:
         campaign = db.query(Campaign).filter(Campaign.id == campaign_id, Campaign.project_id == project_id).first()
         if not campaign:
             raise ValueError("Campaign not found")
@@ -315,7 +352,9 @@ class SupervisorAgent:
         if not brand_pattern or not product_context:
             raise ValueError("Campaign context missing for regeneration")
 
-        campaign_bundle = self.generator.run(brand_pattern, product_context)
+        normalized_instruction = instruction.strip() if instruction and instruction.strip() else None
+        artifact_instructions = {artifact_type: normalized_instruction} if normalized_instruction else None
+        campaign_bundle = self.generator.run(brand_pattern, product_context, artifact_instructions=artifact_instructions)
         content = self._artifact_content(campaign_bundle, artifact_type)
 
         artifact = (
@@ -333,6 +372,8 @@ class SupervisorAgent:
                 "at": utcnow().isoformat(),
                 "prompt_version": self._prompt_version(artifact_type, campaign_bundle=campaign_bundle, campaign=campaign),
             }
+            if normalized_instruction:
+                artifact.provenance["instruction"] = normalized_instruction
             db.add(artifact)
             db.commit()
             db.refresh(artifact)
@@ -350,6 +391,8 @@ class SupervisorAgent:
                 "prompt_version": self._prompt_version(artifact_type, campaign_bundle=campaign_bundle, campaign=campaign),
             },
         )
+        if normalized_instruction:
+            new_artifact.provenance["instruction"] = normalized_instruction
         db.add(new_artifact)
         db.commit()
         db.refresh(new_artifact)

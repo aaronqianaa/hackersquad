@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 
 from app.db import Base, SessionLocal, engine
 from app.main import app
+from app.core.config import settings
 from app.models import Campaign, CampaignArtifact
 
 
@@ -13,6 +14,7 @@ client = TestClient(app)
 def setup_function() -> None:
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
+    settings.openai_api_key = ""
 
 
 def _create_project_with_selection_and_upload() -> str:
@@ -94,6 +96,35 @@ def test_end_to_end_api_flow() -> None:
     assert approve_resp.json()["status"] == "approved"
 
 
+def test_select_reference_page_with_manual_url() -> None:
+    project_resp = client.post(
+        "/projects",
+        json={"tenant_id": "tenant-1", "name": "Manual URL Project", "niche_tags": ["marketing", "instagram"]},
+    )
+    assert project_resp.status_code == 200
+    project_id = project_resp.json()["id"]
+
+    select_resp = client.post(
+        f"/projects/{project_id}/reference-page/select",
+        json={
+            "source_url": "https://instagram.com/example-brand",
+            "title": "Manual Instagram page",
+        },
+    )
+    assert select_resp.status_code == 200
+    payload = select_resp.json()
+    assert payload["tone"]
+    assert payload["headline_style"]
+    assert payload["cta_style"]
+
+
+def test_set_openai_key_endpoint() -> None:
+    resp = client.post("/settings/openai-key", json={"api_key": "sk-test-123"})
+    assert resp.status_code == 200
+    assert resp.json() == {"configured": True}
+    assert settings.openai_api_key == "sk-test-123"
+
+
 def test_campaign_generation_regression_no_invalid_transition_failure() -> None:
     project_id = _create_project_with_selection_and_upload()
     _, campaign_id, task_payload = _start_and_wait_campaign(project_id, "campaign-flow-regression")
@@ -135,6 +166,35 @@ def test_regenerate_single_artifact_endpoint() -> None:
             .first()
         )
         assert stored_email is not None
+        assert stored_email.provenance["prompt_version"] == "email.v1"
+    finally:
+        db.close()
+
+
+def test_regenerate_single_artifact_with_instruction_persists_instruction() -> None:
+    project_id = _create_project_with_selection_and_upload()
+    _, campaign_id, task_payload = _start_and_wait_campaign(project_id, "campaign-flow-regenerate-instruction")
+    assert task_payload["status"] == "completed"
+
+    instruction = "make it shorter and more luxury tone"
+    regenerate_resp = client.post(
+        f"/projects/{project_id}/campaigns/{campaign_id}/artifacts/regenerate",
+        json={"artifact_type": "email", "instruction": instruction},
+    )
+    assert regenerate_resp.status_code == 200
+    regenerated = regenerate_resp.json()
+    assert regenerated["artifact_type"] == "email"
+    assert len(regenerated["content"]) > 0
+
+    db = SessionLocal()
+    try:
+        stored_email = (
+            db.query(CampaignArtifact)
+            .filter(CampaignArtifact.campaign_id == campaign_id, CampaignArtifact.artifact_type == "email")
+            .first()
+        )
+        assert stored_email is not None
+        assert stored_email.provenance["instruction"] == instruction
         assert stored_email.provenance["prompt_version"] == "email.v1"
     finally:
         db.close()
