@@ -58,6 +58,20 @@ class SupervisorAgent:
         db.refresh(run)
         return run
 
+    def _artifact_content(self, campaign_bundle: dict, artifact_type: str) -> str:
+        mapping = {
+            "hero": lambda b: json.dumps(b["hero"]),
+            "product_description": lambda b: b["product_description"],
+            "ads": lambda b: json.dumps(b["ads"]),
+            "email": lambda b: b["email"],
+            "social": lambda b: b["social"],
+            "page_draft": lambda b: b["page_draft"],
+            "creative_brief": lambda b: json.dumps(b["creative_brief"]),
+        }
+        if artifact_type not in mapping:
+            raise ValueError("Unsupported artifact type")
+        return mapping[artifact_type](campaign_bundle)
+
     def run_trend_scan(self, db: Session, project: Project, idempotency_key: str) -> Task:
         task = create_task(db, project.id, "trend_scan", "SupervisorAgent", idempotency_key)
         transition_task(db, task, TaskStatus.running)
@@ -217,13 +231,13 @@ class SupervisorAgent:
                         return
 
                     artifact_pairs = [
-                        ("hero", json.dumps(campaign_bundle["hero"])),
-                        ("product_description", campaign_bundle["product_description"]),
-                        ("ads", json.dumps(campaign_bundle["ads"])),
-                        ("email", campaign_bundle["email"]),
-                        ("social", campaign_bundle["social"]),
-                        ("page_draft", campaign_bundle["page_draft"]),
-                        ("creative_brief", json.dumps(campaign_bundle["creative_brief"])),
+                        ("hero", self._artifact_content(campaign_bundle, "hero")),
+                        ("product_description", self._artifact_content(campaign_bundle, "product_description")),
+                        ("ads", self._artifact_content(campaign_bundle, "ads")),
+                        ("email", self._artifact_content(campaign_bundle, "email")),
+                        ("social", self._artifact_content(campaign_bundle, "social")),
+                        ("page_draft", self._artifact_content(campaign_bundle, "page_draft")),
+                        ("creative_brief", self._artifact_content(campaign_bundle, "creative_brief")),
                     ]
                     for artifact_type, content in artifact_pairs:
                         artifact_idempotency = f"{wf_campaign.id}:{artifact_type}:{wf_task.idempotency_key}"
@@ -266,6 +280,45 @@ class SupervisorAgent:
             return task.id, campaign.id
         finally:
             db.close()
+
+    def regenerate_artifact(self, db: Session, project_id: str, campaign_id: str, artifact_type: str) -> CampaignArtifact:
+        campaign = db.query(Campaign).filter(Campaign.id == campaign_id, Campaign.project_id == project_id).first()
+        if not campaign:
+            raise ValueError("Campaign not found")
+        context = campaign.prompt_context or {}
+        brand_pattern = context.get("brand_pattern")
+        product_context = context.get("product_context")
+        if not brand_pattern or not product_context:
+            raise ValueError("Campaign context missing for regeneration")
+
+        campaign_bundle = self.generator.run(brand_pattern, product_context)
+        content = self._artifact_content(campaign_bundle, artifact_type)
+
+        artifact = (
+            db.query(CampaignArtifact)
+            .filter(CampaignArtifact.campaign_id == campaign_id, CampaignArtifact.artifact_type == artifact_type)
+            .order_by(CampaignArtifact.created_at.desc())
+            .first()
+        )
+        if artifact:
+            artifact.content = content
+            artifact.provenance = {"regenerated": True, "agent": self.generator.name, "at": utcnow().isoformat()}
+            db.add(artifact)
+            db.commit()
+            db.refresh(artifact)
+            return artifact
+
+        new_artifact = CampaignArtifact(
+            campaign_id=campaign_id,
+            artifact_type=artifact_type,
+            content=content,
+            idempotency_key=f"{campaign_id}:{artifact_type}:regen:{uuid.uuid4()}",
+            provenance={"regenerated": True, "agent": self.generator.name, "at": utcnow().isoformat()},
+        )
+        db.add(new_artifact)
+        db.commit()
+        db.refresh(new_artifact)
+        return new_artifact
 
     def watchdog_scan(self, db: Session) -> list[str]:
         changed: list[str] = []

@@ -72,6 +72,10 @@ class CampaignApprovalRequest(BaseModel):
     notes: str | None = None
 
 
+class ArtifactRegenerateRequest(BaseModel):
+    artifact_type: str
+
+
 class CampaignArtifactOut(BaseModel):
     id: str
     artifact_type: str

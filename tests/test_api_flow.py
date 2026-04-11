@@ -95,3 +95,23 @@ def test_campaign_generation_regression_no_invalid_transition_failure() -> None:
     artifacts_resp = client.get(f"/projects/{project_id}/campaigns/{campaign_id}/artifacts")
     assert artifacts_resp.status_code == 200
     assert len(artifacts_resp.json()) >= 1
+
+
+def test_regenerate_single_artifact_endpoint() -> None:
+    project_id = _create_project_with_selection_and_upload()
+    _, campaign_id, task_payload = _start_and_wait_campaign(project_id, "campaign-flow-regenerate")
+    assert task_payload["status"] == "completed"
+
+    regenerate_resp = client.post(
+        f"/projects/{project_id}/campaigns/{campaign_id}/artifacts/regenerate",
+        json={"artifact_type": "email"},
+    )
+    assert regenerate_resp.status_code == 200
+    regenerated = regenerate_resp.json()
+    assert regenerated["artifact_type"] == "email"
+    assert len(regenerated["content"]) > 0
+
+    artifacts_resp = client.get(f"/projects/{project_id}/campaigns/{campaign_id}/artifacts")
+    assert artifacts_resp.status_code == 200
+    emails = [a for a in artifacts_resp.json() if a["artifact_type"] == "email"]
+    assert len(emails) >= 1

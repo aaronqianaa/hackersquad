@@ -23,6 +23,7 @@ from app.models import (
     TrendRecommendation,
 )
 from app.schemas import (
+    ArtifactRegenerateRequest,
     CampaignListOut,
     CampaignApprovalRequest,
     CampaignArtifactOut,
@@ -282,6 +283,27 @@ def list_artifacts(
         CampaignArtifactOut(id=a.id, artifact_type=a.artifact_type, content=a.content, created_at=a.created_at)
         for a in artifacts
     ]
+
+
+@router.post("/projects/{project_id}/campaigns/{campaign_id}/artifacts/regenerate", response_model=CampaignArtifactOut)
+def regenerate_artifact(
+    project_id: str,
+    campaign_id: str,
+    payload: ArtifactRegenerateRequest,
+    db: Session = Depends(get_db),
+    auth: AuthContext = Depends(get_auth_context),
+) -> CampaignArtifactOut:
+    require_project_access(db, project_id, auth)
+    try:
+        artifact = supervisor.regenerate_artifact(db, project_id, campaign_id, payload.artifact_type)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return CampaignArtifactOut(
+        id=artifact.id,
+        artifact_type=artifact.artifact_type,
+        content=artifact.content,
+        created_at=artifact.created_at,
+    )
 
 
 @router.get("/projects/{project_id}/campaigns", response_model=list[CampaignListOut])

@@ -165,6 +165,19 @@
             <button onclick="loadArtifacts()">Load Artifacts</button>
             <button onclick="approveCampaign()">Approve Campaign</button>
           </div>
+          <label>Regenerate One Artifact</label>
+          <div class="row">
+            <select id="regen_artifact_type">
+              <option value="hero">hero</option>
+              <option value="product_description">product_description</option>
+              <option value="ads">ads</option>
+              <option value="email">email</option>
+              <option value="social">social</option>
+              <option value="page_draft">page_draft</option>
+              <option value="creative_brief">creative_brief</option>
+            </select>
+            <button onclick="regenerateArtifact()">Regenerate Selected</button>
+          </div>
           <div class="row">
             <button class="secondary" onclick="copyArtifacts()">Copy Artifacts JSON</button>
             <button class="secondary" onclick="exportArtifacts()">Export Artifacts File</button>
@@ -407,6 +420,21 @@
           });
           setOut("out_campaign", out);
           await refreshCampaigns();
+          renderState();
+        } catch (e) { renderState(String(e)); }
+      }
+
+      async function regenerateArtifact() {
+        if (!state.projectId || !state.campaignId) return renderState("Select a campaign first.");
+        try {
+          const artifactType = qs("regen_artifact_type").value;
+          const out = await api(`/projects/${state.projectId}/campaigns/${state.campaignId}/artifacts/regenerate`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ artifact_type: artifactType }),
+          });
+          setOut("out_campaign", out);
+          await loadArtifacts();
           renderState();
         } catch (e) { renderState(String(e)); }
       }
