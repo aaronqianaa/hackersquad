@@ -1,0 +1,330 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Hackersquad Agent Console</title>
+    <style>
+      :root {
+        --bg: #f4f8f4;
+        --panel: #ffffff;
+        --text: #152319;
+        --muted: #5f7163;
+        --line: #d7e2d9;
+        --brand: #215732;
+        --brand-soft: #e4efe6;
+        --warn: #a15c00;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+        color: var(--text);
+        background:
+          radial-gradient(circle at 10% -10%, #d8ead9 0%, transparent 35%),
+          radial-gradient(circle at 90% 10%, #cde5d3 0%, transparent 30%),
+          var(--bg);
+      }
+      .shell {
+        max-width: 1080px;
+        margin: 24px auto;
+        padding: 0 16px 40px;
+      }
+      .hero {
+        padding: 20px;
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        background: linear-gradient(120deg, #ffffff, #f8fbf8);
+      }
+      .hero h1 {
+        margin: 0;
+        font-size: 1.8rem;
+        letter-spacing: -0.02em;
+      }
+      .hero p {
+        margin: 8px 0 0;
+        color: var(--muted);
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(310px, 1fr));
+        gap: 14px;
+        margin-top: 14px;
+      }
+      .card {
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 14px;
+        background: var(--panel);
+      }
+      .card h3 {
+        margin: 0 0 8px;
+        font-size: 1rem;
+      }
+      .card p {
+        margin: 0 0 10px;
+        color: var(--muted);
+        font-size: 0.92rem;
+      }
+      label {
+        display: block;
+        margin: 8px 0 4px;
+        font-size: 0.85rem;
+        color: var(--muted);
+      }
+      input, textarea, button {
+        width: 100%;
+        border-radius: 10px;
+        border: 1px solid var(--line);
+        font: inherit;
+      }
+      input, textarea {
+        padding: 10px;
+        background: #fff;
+      }
+      textarea {
+        resize: vertical;
+        min-height: 68px;
+      }
+      button {
+        margin-top: 10px;
+        padding: 10px 12px;
+        cursor: pointer;
+        border: 1px solid var(--brand);
+        background: var(--brand);
+        color: #fff;
+        transition: transform 120ms ease, filter 120ms ease;
+      }
+      button:hover { transform: translateY(-1px); filter: brightness(1.04); }
+      .quiet {
+        border-color: var(--line);
+        background: var(--brand-soft);
+        color: var(--text);
+      }
+      pre {
+        margin: 10px 0 0;
+        padding: 10px;
+        border-radius: 10px;
+        background: #0f1712;
+        color: #d2f0dc;
+        overflow-x: auto;
+        font-size: 0.8rem;
+      }
+      .state {
+        margin-top: 12px;
+        padding: 10px;
+        border-radius: 10px;
+        background: #fbfdfb;
+        border: 1px solid var(--line);
+        color: var(--muted);
+      }
+      .pill {
+        display: inline-block;
+        margin-right: 6px;
+        margin-bottom: 6px;
+        padding: 4px 8px;
+        border-radius: 999px;
+        background: var(--brand-soft);
+        border: 1px solid var(--line);
+        font-size: 0.78rem;
+      }
+      .warn { color: var(--warn); }
+    </style>
+  </head>
+  <body>
+    <main class="shell">
+      <section class="hero">
+        <h1>Hackersquad AI Marketing Agent</h1>
+        <p>One-screen console for project setup, trend scan, product upload, campaign generation, and artifact review.</p>
+        <div class="state" id="state"></div>
+      </section>
+
+      <section class="grid">
+        <article class="card">
+          <h3>1. Create Project</h3>
+          <label>Tenant ID</label>
+          <input id="tenant_id" value="tenant-demo" />
+          <label>Project Name</label>
+          <input id="project_name" value="Demo Product Launch" />
+          <label>Niche Tags (comma separated)</label>
+          <input id="niche_tags" value="skincare,dtc" />
+          <button onclick="createProject()">Create Project</button>
+          <pre id="out_project"></pre>
+        </article>
+
+        <article class="card">
+          <h3>2. Trend Scan</h3>
+          <p>Fetch trend recommendations worth studying.</p>
+          <button onclick="runTrendScan()">Run Trend Scan</button>
+          <button class="quiet" onclick="loadRecommendations()">Load Recommendations</button>
+          <label>Recommendation ID</label>
+          <input id="recommendation_id" placeholder="Paste one recommendation ID" />
+          <button onclick="selectReference()">Select Reference Page</button>
+          <pre id="out_trend"></pre>
+        </article>
+
+        <article class="card">
+          <h3>3. Upload Product Photo</h3>
+          <input id="product_file" type="file" accept="image/*" />
+          <button onclick="uploadImage()">Upload Image</button>
+          <pre id="out_upload"></pre>
+        </article>
+
+        <article class="card">
+          <h3>4. Generate Campaign</h3>
+          <label>Idempotency Key</label>
+          <input id="idem_key" value="" />
+          <button onclick="generateCampaign()">Generate Campaign</button>
+          <button class="quiet" onclick="pollTask()">Poll Task Status</button>
+          <button class="quiet" onclick="loadArtifacts()">Load Artifacts</button>
+          <pre id="out_campaign"></pre>
+        </article>
+      </section>
+    </main>
+
+    <script>
+      const state = {
+        projectId: "",
+        recommendationId: "",
+        taskId: "",
+        campaignId: "",
+      };
+
+      const qs = (id) => document.getElementById(id);
+      const pretty = (obj) => JSON.stringify(obj, null, 2);
+      const setOut = (id, obj) => { qs(id).textContent = typeof obj === "string" ? obj : pretty(obj); };
+      const nowKey = () => "ui-" + Date.now();
+
+      function renderState(extra = "") {
+        qs("state").innerHTML = `
+          <span class="pill">project: ${state.projectId || "-"}</span>
+          <span class="pill">recommendation: ${state.recommendationId || "-"}</span>
+          <span class="pill">task: ${state.taskId || "-"}</span>
+          <span class="pill">campaign: ${state.campaignId || "-"}</span>
+          ${extra ? `<div class="warn">${extra}</div>` : ""}
+        `;
+      }
+      renderState();
+      qs("idem_key").value = nowKey();
+
+      async function api(path, opts = {}) {
+        const res = await fetch(path, opts);
+        const text = await res.text();
+        let data = text;
+        try { data = JSON.parse(text); } catch {}
+        if (!res.ok) throw new Error(typeof data === "string" ? data : JSON.stringify(data));
+        return data;
+      }
+
+      async function createProject() {
+        try {
+          const nicheTags = qs("niche_tags").value.split(",").map((s) => s.trim()).filter(Boolean);
+          const payload = {
+            tenant_id: qs("tenant_id").value.trim(),
+            name: qs("project_name").value.trim(),
+            niche_tags: nicheTags,
+          };
+          const data = await api("/projects", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          state.projectId = data.id;
+          setOut("out_project", data);
+          renderState();
+        } catch (err) { renderState(String(err)); }
+      }
+
+      async function runTrendScan() {
+        if (!state.projectId) return renderState("Create a project first.");
+        try {
+          const data = await api(`/projects/${state.projectId}/trend-scan`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ force_refresh: true }),
+          });
+          setOut("out_trend", data);
+          renderState();
+        } catch (err) { renderState(String(err)); }
+      }
+
+      async function loadRecommendations() {
+        if (!state.projectId) return renderState("Create a project first.");
+        try {
+          const data = await api(`/projects/${state.projectId}/recommendations`);
+          setOut("out_trend", data);
+          if (data.length) {
+            state.recommendationId = data[0].id;
+            qs("recommendation_id").value = data[0].id;
+          }
+          renderState();
+        } catch (err) { renderState(String(err)); }
+      }
+
+      async function selectReference() {
+        if (!state.projectId) return renderState("Create a project first.");
+        try {
+          state.recommendationId = qs("recommendation_id").value.trim();
+          const data = await api(`/projects/${state.projectId}/reference-page/select`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ recommendation_id: state.recommendationId }),
+          });
+          setOut("out_trend", data);
+          renderState();
+        } catch (err) { renderState(String(err)); }
+      }
+
+      async function uploadImage() {
+        if (!state.projectId) return renderState("Create a project first.");
+        const file = qs("product_file").files[0];
+        if (!file) return renderState("Pick a product image file first.");
+        try {
+          const form = new FormData();
+          form.append("file", file);
+          const data = await api(`/projects/${state.projectId}/uploads/product-image`, {
+            method: "POST",
+            body: form,
+          });
+          setOut("out_upload", data);
+          renderState();
+        } catch (err) { renderState(String(err)); }
+      }
+
+      async function generateCampaign() {
+        if (!state.projectId) return renderState("Create a project first.");
+        try {
+          const key = qs("idem_key").value.trim() || nowKey();
+          qs("idem_key").value = key;
+          const data = await api(`/projects/${state.projectId}/campaigns/generate`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ idempotency_key: key }),
+          });
+          state.taskId = data.task_id;
+          state.campaignId = data.campaign_id;
+          setOut("out_campaign", data);
+          renderState();
+        } catch (err) { renderState(String(err)); }
+      }
+
+      async function pollTask() {
+        if (!state.projectId || !state.taskId) return renderState("Generate a campaign first.");
+        try {
+          const data = await api(`/projects/${state.projectId}/tasks/${state.taskId}`);
+          setOut("out_campaign", data);
+          renderState();
+        } catch (err) { renderState(String(err)); }
+      }
+
+      async function loadArtifacts() {
+        if (!state.projectId || !state.campaignId) return renderState("Generate a campaign first.");
+        try {
+          const data = await api(`/projects/${state.projectId}/campaigns/${state.campaignId}/artifacts`);
+          setOut("out_campaign", data);
+          renderState();
+        } catch (err) { renderState(String(err)); }
+      }
+    </script>
+  </body>
+</html>

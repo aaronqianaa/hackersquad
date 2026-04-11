@@ -36,6 +36,10 @@ pip install -e .[dev]
 uvicorn app.main:app --reload
 ```
 
+Then open:
+- `http://127.0.0.1:8000/` for the UI console
+- `http://127.0.0.1:8000/docs` for Swagger
+
 ## Configure AI Provider
 Set these environment variables (or add them to `.env`):
 ```bash
