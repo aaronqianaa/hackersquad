@@ -13,8 +13,12 @@ class Settings(BaseSettings):
     api_key: str = ""
     require_tenant_header: bool = False
     openai_api_key: str = ""
+    openai_image_api_key: str = ""
+    openai_video_api_key: str = ""
     openai_model: str = "gpt-4.1-mini"
     openai_vision_model: str = "gpt-4.1-mini"
+    openai_image_model: str = "dall-e-2"
+    openai_video_model: str = "sora-2"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

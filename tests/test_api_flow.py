@@ -118,11 +118,47 @@ def test_select_reference_page_with_manual_url() -> None:
     assert payload["cta_style"]
 
 
+def test_trend_scan_replaces_results_when_source_type_changes() -> None:
+    project_resp = client.post(
+        "/projects",
+        json={"tenant_id": "tenant-1", "name": "Trend Switch Project", "niche_tags": ["marketing"]},
+    )
+    assert project_resp.status_code == 200
+    project_id = project_resp.json()["id"]
+
+    first_scan = client.post(
+        f"/projects/{project_id}/trend-scan",
+        json={"force_refresh": True, "source_type": "instagram"},
+    )
+    assert first_scan.status_code == 200
+    first_recs = client.get(f"/projects/{project_id}/recommendations").json()
+    assert len(first_recs) > 0
+    assert all("instagram.com" in rec["source_url"] for rec in first_recs)
+
+    second_scan = client.post(
+        f"/projects/{project_id}/trend-scan",
+        json={"force_refresh": True, "source_type": "x"},
+    )
+    assert second_scan.status_code == 200
+    second_recs = client.get(f"/projects/{project_id}/recommendations").json()
+    assert len(second_recs) > 0
+    assert all("x.com" in rec["source_url"] for rec in second_recs)
+
+
 def test_set_openai_key_endpoint() -> None:
-    resp = client.post("/settings/openai-key", json={"api_key": "sk-test-123"})
+    resp = client.post(
+        "/settings/openai-key",
+        json={
+            "api_key": "sk-test-123",
+            "image_api_key": "sk-image-123",
+            "video_api_key": "sk-video-123",
+        },
+    )
     assert resp.status_code == 200
-    assert resp.json() == {"configured": True}
+    assert resp.json() == {"configured": True, "image_configured": True, "video_configured": True}
     assert settings.openai_api_key == "sk-test-123"
+    assert settings.openai_image_api_key == "sk-image-123"
+    assert settings.openai_video_api_key == "sk-video-123"
 
 
 def test_campaign_generation_regression_no_invalid_transition_failure() -> None:
@@ -137,6 +173,19 @@ def test_campaign_generation_regression_no_invalid_transition_failure() -> None:
     artifacts_resp = client.get(f"/projects/{project_id}/campaigns/{campaign_id}/artifacts")
     assert artifacts_resp.status_code == 200
     assert len(artifacts_resp.json()) >= 1
+
+    strategy_resp = client.get(f"/projects/{project_id}/campaigns/{campaign_id}/strategy")
+    assert strategy_resp.status_code == 200
+    assert "strategy_plan" in strategy_resp.json()
+    assert len(strategy_resp.json()["strategy_plan"]) > 0
+
+    deliverables_resp = client.get(f"/projects/{project_id}/campaigns/{campaign_id}/deliverables")
+    assert deliverables_resp.status_code == 200
+    deliverables = deliverables_resp.json()["deliverables"]
+    assert "media_assets" in deliverables
+    assert deliverables["hero"]["headline"]
+    assert len(deliverables["ads"]) >= 1
+    assert deliverables["email"]["subject"]
 
 
 def test_regenerate_single_artifact_endpoint() -> None:
@@ -243,6 +292,7 @@ def test_campaign_generation_stores_prompt_versions_in_campaign_context_and_arti
     try:
         campaign = db.query(Campaign).filter(Campaign.id == campaign_id).first()
         assert campaign is not None
+        assert campaign.prompt_context["strategy_plan"]
         assert campaign.prompt_context["prompt_versions"]["hero"] == "hero.v1"
         assert campaign.prompt_context["prompt_versions"]["creative_brief"] == "creative_brief.v1"
         assert campaign.prompt_context["qa"]["quality_checks"]["tone_alignment"]["passed"] is True
@@ -257,3 +307,33 @@ def test_campaign_generation_stores_prompt_versions_in_campaign_context_and_arti
         assert prompt_versions["page_draft"] == "page_draft.v1"
     finally:
         db.close()
+
+
+def test_campaign_generator_sanitizes_unsafe_claims() -> None:
+    from app.services.workers import CampaignGeneratorAgent
+
+    agent = CampaignGeneratorAgent()
+    bundle = agent._sanitize_bundle(
+        {
+            "hero": {
+                "headline": "Guaranteed results for everyone",
+                "subheadline": "Instant results with zero risk-free setup",
+                "cta": "Try this cure today",
+            },
+            "product_description": "Clinically proven formula with scientifically proven benefits.",
+            "ads": ["100% guaranteed upgrade."],
+            "email": "Subject: Guaranteed win\nBody: Works for everyone.",
+            "social": "Risk-free instant results.",
+            "page_draft": "A cure for every use case.",
+            "creative_brief": {"visual_direction": "Guaranteed premium transformation", "tone": "confident"},
+            "image_concepts": "Scientifically proven hero shot.",
+            "video_script": "Hook: instant results.",
+        }
+    )
+
+    serialized = str(bundle).lower()
+    assert "guaranteed" not in serialized
+    assert "instant results" not in serialized
+    assert "risk-free" not in serialized
+    assert "works for everyone" not in serialized
+    assert "clinically proven" not in serialized

@@ -1,35 +1,74 @@
 [
   {
-    "source_url": "https://example.com/dtc/skincare-winner",
-    "title": "Skincare Funnel - Conversion Focused",
-    "signals": {
-      "recency": 0.78,
-      "engagement": 0.88,
-      "structural_quality": 0.90,
-      "niche_relevance": 0.85,
-      "novelty": 0.62
-    }
-  },
-  {
-    "source_url": "https://example.com/gadgets/prelaunch-page",
-    "title": "Gadget Prelaunch with Social Proof",
+    "platform": "instagram",
+    "source_url": "https://www.instagram.com/glossier/",
+    "title": "Glossier Instagram",
     "signals": {
       "recency": 0.84,
-      "engagement": 0.80,
+      "engagement": 0.86,
       "structural_quality": 0.82,
-      "niche_relevance": 0.70,
-      "novelty": 0.75
+      "niche_relevance": 0.88,
+      "novelty": 0.67
     }
   },
   {
-    "source_url": "https://example.com/fashion/ugc-offer",
-    "title": "Fashion UGC + Offer Stacking",
+    "platform": "instagram",
+    "source_url": "https://www.instagram.com/alo/",
+    "title": "ALO Instagram",
     "signals": {
-      "recency": 0.72,
-      "engagement": 0.86,
-      "structural_quality": 0.79,
-      "niche_relevance": 0.76,
-      "novelty": 0.82
+      "recency": 0.80,
+      "engagement": 0.83,
+      "structural_quality": 0.84,
+      "niche_relevance": 0.75,
+      "novelty": 0.69
+    }
+  },
+  {
+    "platform": "instagram",
+    "source_url": "https://www.instagram.com/rhode/",
+    "title": "Rhode Instagram",
+    "signals": {
+      "recency": 0.86,
+      "engagement": 0.89,
+      "structural_quality": 0.83,
+      "niche_relevance": 0.90,
+      "novelty": 0.72
+    }
+  },
+  {
+    "platform": "x",
+    "source_url": "https://x.com/OpenAI",
+    "title": "OpenAI on X",
+    "signals": {
+      "recency": 0.93,
+      "engagement": 0.90,
+      "structural_quality": 0.78,
+      "niche_relevance": 0.72,
+      "novelty": 0.88
+    }
+  },
+  {
+    "platform": "x",
+    "source_url": "https://x.com/Shopify",
+    "title": "Shopify on X",
+    "signals": {
+      "recency": 0.85,
+      "engagement": 0.81,
+      "structural_quality": 0.80,
+      "niche_relevance": 0.82,
+      "novelty": 0.70
+    }
+  },
+  {
+    "platform": "x",
+    "source_url": "https://x.com/notionhq",
+    "title": "Notion on X",
+    "signals": {
+      "recency": 0.79,
+      "engagement": 0.78,
+      "structural_quality": 0.76,
+      "niche_relevance": 0.74,
+      "novelty": 0.73
     }
   }
 ]

@@ -10,6 +10,8 @@ ARTIFACT_TYPES = (
     "social",
     "page_draft",
     "creative_brief",
+    "image_concepts",
+    "video_script",
 )
 
 
@@ -19,7 +21,13 @@ class PromptTemplate:
     version: str
     instructions: str
 
-    def render(self, brand_pattern: dict, product_context: dict, instruction: str | None = None) -> str:
+    def render(
+        self,
+        brand_pattern: dict,
+        product_context: dict,
+        instruction: str | None = None,
+        strategy_plan: str | None = None,
+    ) -> str:
         prompt = (
             f"{self.instructions}\n"
             "Brand pattern:\n"
@@ -28,6 +36,8 @@ class PromptTemplate:
             f"{json.dumps(product_context, indent=2, sort_keys=True)}\n"
             "Keep claims realistic, use a clear CTA when relevant, and avoid unsupported promises."
         )
+        if strategy_plan:
+            prompt = f"{prompt}\nExecution plan:\n{strategy_plan.strip()}"
         if instruction:
             prompt = f"{prompt}\nRevision instruction:\n{instruction.strip()}"
         return prompt
@@ -88,14 +98,36 @@ PROMPT_TEMPLATES: dict[str, PromptTemplate] = {
             "and CTA emphasis."
         ),
     ),
+    "image_concepts": PromptTemplate(
+        artifact_type="image_concepts",
+        version="image_concepts.v1",
+        instructions=(
+            "Write three executable marketing image concepts. For each concept include shot idea, visual mood, "
+            "text overlay, and CTA placement."
+        ),
+    ),
+    "video_script": PromptTemplate(
+        artifact_type="video_script",
+        version="video_script.v1",
+        instructions=(
+            "Write a short performance marketing video script with hook, scene-by-scene beats, voiceover, "
+            "on-screen text, and CTA."
+        ),
+    ),
 }
 
 
-def build_prompt(artifact_type: str, brand_pattern: dict, product_context: dict, instruction: str | None = None) -> str:
+def build_prompt(
+    artifact_type: str,
+    brand_pattern: dict,
+    product_context: dict,
+    instruction: str | None = None,
+    strategy_plan: str | None = None,
+) -> str:
     template = PROMPT_TEMPLATES.get(artifact_type)
     if not template:
         raise ValueError(f"Unsupported artifact type: {artifact_type}")
-    return template.render(brand_pattern, product_context, instruction=instruction)
+    return template.render(brand_pattern, product_context, instruction=instruction, strategy_plan=strategy_plan)
 
 
 def prompt_version_for(artifact_type: str) -> str:

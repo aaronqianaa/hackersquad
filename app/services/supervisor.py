@@ -1,9 +1,11 @@
 import json
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.models import (
     AgentRun,
     BrandPattern,
@@ -31,8 +33,10 @@ from app.services.workflow_engine import TemporalWorkflowEngine, WorkflowEngine
 from app.services.workers import (
     BrandPatternAgent,
     CampaignGeneratorAgent,
+    DeliverablesAgent,
     PageAnalyzerAgent,
     QAComplianceAgent,
+    StrategyPlannerAgent,
     TrendScoutAgent,
     VisionProductAgent,
 )
@@ -49,7 +53,9 @@ class SupervisorAgent:
         self.page_analyzer = PageAnalyzerAgent()
         self.brand_pattern_agent = BrandPatternAgent()
         self.vision_agent = VisionProductAgent()
+        self.strategy_planner = StrategyPlannerAgent()
         self.generator = CampaignGeneratorAgent()
+        self.deliverables_agent = DeliverablesAgent()
         self.qa_agent = QAComplianceAgent()
 
     def _create_agent_run(self, db: Session, task_id: str, agent_name: str, status: str, details: dict | None = None) -> AgentRun:
@@ -68,6 +74,8 @@ class SupervisorAgent:
             "social": lambda b: b["social"],
             "page_draft": lambda b: b["page_draft"],
             "creative_brief": lambda b: json.dumps(b["creative_brief"]),
+            "image_concepts": lambda b: b["image_concepts"],
+            "video_script": lambda b: b["video_script"],
         }
         if artifact_type not in mapping:
             raise ValueError("Unsupported artifact type")
@@ -91,14 +99,28 @@ class SupervisorAgent:
         db.add(revision)
         return revision
 
-    def run_trend_scan(self, db: Session, project: Project, idempotency_key: str) -> Task:
+    def run_trend_scan(
+        self,
+        db: Session,
+        project: Project,
+        idempotency_key: str,
+        source_type: str | None = None,
+    ) -> Task:
         task = create_task(db, project.id, "trend_scan", "SupervisorAgent", idempotency_key)
         transition_task(db, task, TaskStatus.running)
         heartbeat(db, task)
         save_checkpoint(db, task, "trend_scan_started", {"project_id": project.id})
 
         run = self._create_agent_run(db, task.id, self.trend_scout.name, "running")
-        recommendations = self.trend_scout.run(project.niche_tags)
+        effective_tags = list(project.niche_tags)
+        if source_type in {"instagram", "x"}:
+            effective_tags = [tag for tag in effective_tags if tag.lower() not in {"instagram", "x"}]
+            effective_tags.append(source_type)
+            project.niche_tags = effective_tags
+            project.selected_recommendation_id = None
+            db.add(project)
+        db.query(TrendRecommendation).filter(TrendRecommendation.project_id == project.id).delete()
+        recommendations = self.trend_scout.run(effective_tags)
 
         for recommendation in recommendations:
             rec = TrendRecommendation(project_id=project.id, **recommendation)
@@ -259,8 +281,16 @@ class SupervisorAgent:
                     heartbeat(wf_db, wf_task)
                     save_checkpoint(wf_db, wf_task, "product_analyzed", product_context)
 
+                    strategy_run = self._create_agent_run(wf_db, wf_task.id, self.strategy_planner.name, "running")
+                    strategy_plan = self.strategy_planner.run(brand_pattern, product_context)
+                    strategy_run.status = "completed"
+                    strategy_run.ended_at = utcnow()
+                    wf_db.add(strategy_run)
+                    heartbeat(wf_db, wf_task)
+                    save_checkpoint(wf_db, wf_task, "strategy_planned", {"strategy_plan": strategy_plan})
+
                     gen_run = self._create_agent_run(wf_db, wf_task.id, self.generator.name, "running")
-                    campaign_bundle = self.generator.run(brand_pattern, product_context)
+                    campaign_bundle = self.generator.run(brand_pattern, product_context, strategy_plan=strategy_plan)
                     gen_run.status = "completed"
                     gen_run.ended_at = utcnow()
                     wf_db.add(gen_run)
@@ -287,6 +317,8 @@ class SupervisorAgent:
                         ("social", self._artifact_content(campaign_bundle, "social")),
                         ("page_draft", self._artifact_content(campaign_bundle, "page_draft")),
                         ("creative_brief", self._artifact_content(campaign_bundle, "creative_brief")),
+                        ("image_concepts", self._artifact_content(campaign_bundle, "image_concepts")),
+                        ("video_script", self._artifact_content(campaign_bundle, "video_script")),
                     ]
                     for artifact_type, content in artifact_pairs:
                         artifact_idempotency = f"{wf_campaign.id}:{artifact_type}:{wf_task.idempotency_key}"
@@ -313,6 +345,7 @@ class SupervisorAgent:
                     wf_campaign.prompt_context = {
                         "brand_pattern": brand_pattern,
                         "product_context": product_context,
+                        "strategy_plan": strategy_plan,
                         "qa": qa_result,
                         "prompt_versions": campaign_bundle.get("_prompt_versions", {}),
                     }
@@ -349,12 +382,18 @@ class SupervisorAgent:
         context = campaign.prompt_context or {}
         brand_pattern = context.get("brand_pattern")
         product_context = context.get("product_context")
+        strategy_plan = context.get("strategy_plan")
         if not brand_pattern or not product_context:
             raise ValueError("Campaign context missing for regeneration")
 
         normalized_instruction = instruction.strip() if instruction and instruction.strip() else None
         artifact_instructions = {artifact_type: normalized_instruction} if normalized_instruction else None
-        campaign_bundle = self.generator.run(brand_pattern, product_context, artifact_instructions=artifact_instructions)
+        campaign_bundle = self.generator.run(
+            brand_pattern,
+            product_context,
+            artifact_instructions=artifact_instructions,
+            strategy_plan=strategy_plan,
+        )
         content = self._artifact_content(campaign_bundle, artifact_type)
 
         artifact = (
@@ -397,6 +436,29 @@ class SupervisorAgent:
         db.commit()
         db.refresh(new_artifact)
         return new_artifact
+
+    def build_deliverables(self, db: Session, project_id: str, campaign_id: str) -> dict:
+        campaign = db.query(Campaign).filter(Campaign.id == campaign_id, Campaign.project_id == project_id).first()
+        if not campaign:
+            raise ValueError("Campaign not found")
+        artifacts = db.query(CampaignArtifact).filter(CampaignArtifact.campaign_id == campaign_id).all()
+        if not artifacts:
+            raise ValueError("Campaign artifacts not found")
+        artifact_map = {artifact.artifact_type: artifact.content for artifact in artifacts}
+        prompt_context = campaign.prompt_context or {}
+        strategy_plan = prompt_context.get("strategy_plan")
+        product_context = prompt_context.get("product_context") or {}
+        output_dir = Path(settings.uploads_dir) / project_id / "generated" / campaign_id
+        deliverables = self.deliverables_agent.run(
+            artifact_map,
+            strategy_plan=strategy_plan,
+            output_dir=str(output_dir),
+            reference_image_path=product_context.get("image_path"),
+        )
+        campaign.prompt_context = {**(campaign.prompt_context or {}), "deliverables": deliverables}
+        db.add(campaign)
+        db.commit()
+        return deliverables
 
     def watchdog_scan(self, db: Session) -> list[str]:
         changed: list[str] = []

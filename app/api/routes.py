@@ -32,6 +32,7 @@ from app.schemas import (
     CampaignArtifactRevisionOut,
     CampaignGenerateRequest,
     CampaignGenerateResponse,
+    DeliverablesOut,
     OpenAIKeyUpdateRequest,
     ProjectCreate,
     ProjectOut,
@@ -40,6 +41,7 @@ from app.schemas import (
     ReferenceSelectRequest,
     TaskOut,
     TaskSummaryOut,
+    StrategyPlanOut,
     TrendRecommendationOut,
     TrendScanRequest,
     UploadResponse,
@@ -55,7 +57,13 @@ supervisor = SupervisorAgent()
 @router.post("/settings/openai-key")
 def set_openai_key(payload: OpenAIKeyUpdateRequest) -> dict:
     settings.openai_api_key = payload.api_key.strip()
-    return {"configured": bool(settings.openai_api_key)}
+    settings.openai_image_api_key = (payload.image_api_key or "").strip()
+    settings.openai_video_api_key = (payload.video_api_key or "").strip()
+    return {
+        "configured": bool(settings.openai_api_key),
+        "image_configured": bool(settings.openai_image_api_key),
+        "video_configured": bool(settings.openai_video_api_key),
+    }
 
 
 def to_task_out(task: Task) -> TaskOut:
@@ -123,12 +131,17 @@ def list_projects(
 @router.post("/projects/{project_id}/trend-scan", response_model=TaskOut)
 def trend_scan(
     project_id: str,
-    _: TrendScanRequest,
+    payload: TrendScanRequest,
     db: Session = Depends(get_db),
     auth: AuthContext = Depends(get_auth_context),
 ) -> TaskOut:
     project = require_project_access(db, project_id, auth)
-    task = supervisor.run_trend_scan(db, project, idempotency_key=f"trend:{project_id}:{uuid.uuid4()}")
+    task = supervisor.run_trend_scan(
+        db,
+        project,
+        idempotency_key=f"trend:{project_id}:{uuid.uuid4()}",
+        source_type=payload.source_type,
+    )
     return to_task_out(task)
 
 
@@ -184,6 +197,17 @@ def select_reference_page(
         "tone": pattern.tone,
         "headline_style": pattern.headline_style,
         "cta_style": pattern.cta_style,
+        "proof_strategy": pattern.proof_strategy,
+        "what_is_selling": pattern.raw_extraction.get("what_is_selling"),
+        "marketing_style": pattern.raw_extraction.get("marketing_style"),
+        "description": pattern.raw_extraction.get("description"),
+        "likes": pattern.raw_extraction.get("likes"),
+        "comments": pattern.raw_extraction.get("comments"),
+        "views": pattern.raw_extraction.get("views"),
+        "followers": pattern.raw_extraction.get("followers"),
+        "fetch_ok": pattern.raw_extraction.get("fetch_ok"),
+        "final_url": pattern.raw_extraction.get("final_url"),
+        "platform": pattern.raw_extraction.get("platform"),
     }
 
 
@@ -300,6 +324,38 @@ def list_artifacts(
         CampaignArtifactOut(id=a.id, artifact_type=a.artifact_type, content=a.content, created_at=a.created_at)
         for a in artifacts
     ]
+
+
+@router.get("/projects/{project_id}/campaigns/{campaign_id}/strategy", response_model=StrategyPlanOut)
+def get_strategy_plan(
+    project_id: str,
+    campaign_id: str,
+    db: Session = Depends(get_db),
+    auth: AuthContext = Depends(get_auth_context),
+) -> StrategyPlanOut:
+    require_project_access(db, project_id, auth)
+    campaign = db.query(Campaign).filter(Campaign.id == campaign_id, Campaign.project_id == project_id).first()
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    strategy_plan = (campaign.prompt_context or {}).get("strategy_plan")
+    if not strategy_plan:
+        raise HTTPException(status_code=404, detail="Strategy plan not available")
+    return StrategyPlanOut(campaign_id=campaign.id, strategy_plan=strategy_plan)
+
+
+@router.get("/projects/{project_id}/campaigns/{campaign_id}/deliverables", response_model=DeliverablesOut)
+def get_campaign_deliverables(
+    project_id: str,
+    campaign_id: str,
+    db: Session = Depends(get_db),
+    auth: AuthContext = Depends(get_auth_context),
+) -> DeliverablesOut:
+    require_project_access(db, project_id, auth)
+    try:
+        deliverables = supervisor.build_deliverables(db, project_id, campaign_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return DeliverablesOut(campaign_id=campaign_id, deliverables=deliverables)
 
 
 @router.post("/projects/{project_id}/campaigns/{campaign_id}/artifacts/regenerate", response_model=CampaignArtifactOut)

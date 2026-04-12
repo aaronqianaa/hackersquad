@@ -51,6 +51,15 @@
         font-size: 1rem;
         line-height: 1.55;
       }
+      .hero-keys {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 12px;
+        margin-top: 18px;
+      }
+      .hero-keys button {
+        align-self: end;
+      }
       .state {
         margin-top: 16px;
         padding: 12px 14px;
@@ -173,6 +182,40 @@
         grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
         gap: 12px;
       }
+      .choice-list {
+        display: grid;
+        gap: 10px;
+        margin-top: 10px;
+      }
+      .choice-card {
+        padding: 12px;
+        border-radius: 16px;
+        border: 1px solid rgba(159, 79, 34, 0.12);
+        background: rgba(255, 255, 255, 0.78);
+        cursor: pointer;
+        transition: border-color 120ms ease, box-shadow 120ms ease, transform 120ms ease;
+      }
+      .choice-card:hover {
+        border-color: rgba(159, 79, 34, 0.38);
+        box-shadow: 0 10px 24px rgba(79, 47, 22, 0.08);
+        transform: translateY(-1px);
+      }
+      .choice-card.selected {
+        border-color: rgba(159, 79, 34, 0.48);
+        box-shadow: 0 12px 28px rgba(79, 47, 22, 0.1);
+      }
+      .choice-card strong {
+        display: block;
+        margin-bottom: 4px;
+      }
+      .choice-card a {
+        color: var(--brand-strong);
+        word-break: break-all;
+        font-size: 0.86rem;
+      }
+      .choice-card button {
+        margin-top: 10px;
+      }
       .material {
         padding: 14px;
         border-radius: 16px;
@@ -190,6 +233,166 @@
         line-height: 1.55;
         font-size: 0.9rem;
       }
+      .preview-stack {
+        display: grid;
+        gap: 12px;
+      }
+      .hero-preview {
+        padding: 20px;
+        border-radius: 18px;
+        background:
+          radial-gradient(circle at top right, rgba(255, 255, 255, 0.35), transparent 30%),
+          linear-gradient(135deg, #8d451f, #c26b35);
+        color: #fff8f1;
+      }
+      .hero-preview h4,
+      .email-preview h4,
+      .social-preview h4,
+      .section-list h4,
+      .creative-brief h4,
+      .storyboard h4 {
+        margin: 0 0 8px;
+        font-size: 0.82rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        opacity: 0.82;
+      }
+      .hero-preview h5 {
+        margin: 0;
+        font-size: 1.6rem;
+        line-height: 1.08;
+        letter-spacing: -0.04em;
+      }
+      .hero-preview p {
+        margin: 10px 0 16px;
+        color: rgba(255, 248, 241, 0.86);
+      }
+      .hero-preview button {
+        width: auto;
+        min-width: 140px;
+        margin: 0;
+        background: #fff8f1;
+        color: #8d451f;
+      }
+      .ad-list,
+      .concept-list,
+      .storyboard-list,
+      .brief-list,
+      .section-list ul {
+        display: grid;
+        gap: 10px;
+      }
+      .ad-item,
+      .brief-item,
+      .section-item {
+        padding: 12px;
+        border-radius: 14px;
+        background: rgba(159, 79, 34, 0.07);
+        border: 1px solid rgba(159, 79, 34, 0.1);
+        color: var(--muted);
+        line-height: 1.5;
+      }
+      .email-preview,
+      .social-preview,
+      .creative-brief,
+      .storyboard {
+        padding: 16px;
+        border-radius: 16px;
+        border: 1px solid rgba(159, 79, 34, 0.12);
+        background: linear-gradient(180deg, rgba(255,255,255,0.95), rgba(246,238,225,0.8));
+      }
+      .email-subject {
+        margin: 0 0 12px;
+        font-size: 1rem;
+        font-weight: 700;
+        color: var(--text);
+      }
+      .social-shell {
+        padding: 14px;
+        border-radius: 16px;
+        background: #fff;
+        border: 1px solid rgba(159, 79, 34, 0.1);
+      }
+      .social-meta {
+        margin-bottom: 10px;
+        color: var(--brand-strong);
+        font-size: 0.82rem;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+      .concept-card,
+      .story-scene {
+        overflow: hidden;
+        border-radius: 16px;
+        border: 1px solid rgba(159, 79, 34, 0.12);
+        background: #fff;
+      }
+      .concept-visual,
+      .story-scene-visual {
+        min-height: 160px;
+        padding: 16px;
+        display: flex;
+        align-items: end;
+        background:
+          radial-gradient(circle at top, rgba(255,255,255,0.45), transparent 36%),
+          linear-gradient(135deg, #d58a57, #92502b);
+        color: #fff8f1;
+        font-weight: 700;
+        line-height: 1.2;
+      }
+      .concept-body,
+      .story-scene-body {
+        padding: 14px;
+        display: grid;
+        gap: 8px;
+      }
+      .concept-tag,
+      .scene-tag {
+        display: inline-block;
+        width: fit-content;
+        padding: 4px 8px;
+        border-radius: 999px;
+        background: var(--soft);
+        color: var(--brand-strong);
+        font-size: 0.75rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+      .story-scene-visual {
+        min-height: 120px;
+        background:
+          radial-gradient(circle at top, rgba(255,255,255,0.4), transparent 36%),
+          linear-gradient(135deg, #7a3b18, #c57b3f);
+      }
+      .media-gallery {
+        display: grid;
+        gap: 12px;
+      }
+      .media-tile {
+        padding: 12px;
+        border-radius: 16px;
+        border: 1px solid rgba(159, 79, 34, 0.12);
+        background: #fff;
+      }
+      .media-tile img,
+      .media-tile video {
+        width: 100%;
+        display: block;
+        border-radius: 12px;
+        background: #eadbc7;
+      }
+      .media-label {
+        margin-top: 8px;
+        color: var(--muted);
+        font-size: 0.9rem;
+      }
+      .plain-copy {
+        color: var(--muted);
+        white-space: pre-wrap;
+        line-height: 1.6;
+      }
       .footnote {
         margin-top: 12px;
         color: var(--muted);
@@ -206,9 +409,23 @@
       <section class="hero">
         <h1>Hackersquad</h1>
         <p>Simple marketing workflow: scan a trendy page, review the study, upload your product photo, make the strategy, then generate the materials.</p>
-        <label>OpenAI API Key</label>
-        <input id="openai_api_key" type="password" placeholder="sk-..." />
-        <button onclick="saveOpenAIKey()">Use Real AI Agent</button>
+        <div class="hero-keys">
+          <div>
+            <label>AI Agent API Key</label>
+            <input id="openai_api_key" type="password" placeholder="sk-..." />
+          </div>
+          <div>
+            <label>Image Generation API Key</label>
+            <input id="openai_image_api_key" type="password" placeholder="sk-..." />
+          </div>
+          <div>
+            <label>Video Generation API Key</label>
+            <input id="openai_video_api_key" type="password" placeholder="sk-..." />
+          </div>
+          <div>
+            <button onclick="saveOpenAIKey()">Use Real AI Agent</button>
+          </div>
+        </div>
         <div class="state" id="state"></div>
       </section>
 
@@ -224,8 +441,7 @@
           </select>
           <button onclick="scanTrendyPages()">Scan For Trendy Page</button>
           <label>Choose a page</label>
-          <select id="recommendation_select" onchange="previewRecommendation(this.value)"></select>
-          <button onclick="selectTrendyPage()">Use This Page</button>
+          <div class="choice-list" id="recommendation_cards"></div>
           <label>Or enter a URL directly</label>
           <input id="manual_page_url" placeholder="https://instagram.com/... or https://x.com/..." />
           <button onclick="useManualUrl()">Use Entered URL</button>
@@ -236,6 +452,7 @@
           <div class="eyebrow">Step 2</div>
           <h2>Summary Of The Study</h2>
           <p class="note">This summarizes the selected page’s structure, angle, CTA style, and proof pattern.</p>
+          <button onclick="generateStudySummary()">Generate Study Summary</button>
           <div class="result summary" id="study_summary">Run a scan and choose a page to see the study summary.</div>
         </article>
 
@@ -262,7 +479,7 @@
           <p class="note">This collects the generated deliverables in one place.</p>
           <button onclick="generateMarketingMaterials()">Generate All Materials Needed To Do Marketing</button>
           <div class="material-grid" id="materials_output"></div>
-          <div class="footnote">Current build generates text deliverables and a creative brief. Automated image and video generation are not wired into the backend yet.</div>
+          <div class="footnote">Step 5 is focused on final-facing outputs: generated media files when available, plus ready-to-use marketing copy and captions.</div>
         </article>
       </section>
     </main>
@@ -277,7 +494,14 @@
         uploadId: "",
         taskId: "",
         campaignId: "",
+        strategyPlan: "",
         materials: [],
+        deliverables: null,
+        keyStatus: {
+          text: false,
+          image: false,
+          video: false,
+        },
       };
 
       const qs = (id) => document.getElementById(id);
@@ -285,6 +509,7 @@
 
       function renderState(message = "") {
         qs("state").innerHTML = `
+          <strong>AI keys:</strong> text ${state.keyStatus.text ? "saved" : "not set"} | image ${state.keyStatus.image ? "saved" : "not set"} | video ${state.keyStatus.video ? "saved" : "not set"}<br>
           <strong>Project:</strong> ${state.projectId || "not created"}<br>
           <strong>Trend page:</strong> ${state.recommendationId || "not selected"}<br>
           <strong>Upload:</strong> ${state.uploadId || "not uploaded"}<br>
@@ -304,17 +529,34 @@
 
       async function saveOpenAIKey() {
         const apiKey = qs("openai_api_key").value.trim();
-        if (!apiKey) {
-          renderState("Enter an OpenAI API key first.");
+        const imageApiKey = qs("openai_image_api_key").value.trim();
+        const videoApiKey = qs("openai_video_api_key").value.trim();
+        if (!apiKey && !imageApiKey && !videoApiKey) {
+          renderState("Enter at least one API key first.");
           return;
         }
         try {
-          await api("/settings/openai-key", {
+          const result = await api("/settings/openai-key", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ api_key: apiKey }),
+            body: JSON.stringify({
+              api_key: apiKey,
+              image_api_key: imageApiKey,
+              video_api_key: videoApiKey,
+            }),
           });
-          renderState("OpenAI key saved for this app session. New study and generation calls will use the real model.");
+          state.keyStatus = {
+            text: !!result.configured,
+            image: !!result.image_configured,
+            video: !!result.video_configured,
+          };
+          renderState(
+            [
+              result.configured ? "AI agent key saved." : "AI agent key not set.",
+              result.image_configured ? "Image generation key saved." : "Image generation key not set.",
+              result.video_configured ? "Video generation key saved." : "Video generation key not set.",
+            ].join(" ")
+          );
         } catch (e) {
           renderState(String(e));
         }
@@ -346,7 +588,7 @@
           `Source URL: ${rec.source_url}`,
           `Why it looks strong: ${Array.isArray(rec.reasons) ? rec.reasons.join(", ") : "High engagement and strong structure."}`,
           `Signal snapshot: recency ${signals.recency ?? "-"}, engagement ${signals.engagement ?? "-"}, structure ${signals.structural_quality ?? "-"}`,
-        ].join("\n");
+        ].filter(Boolean).join("\n");
       }
 
       function revealStudySummary() {
@@ -357,11 +599,54 @@
         return [
           `Reference chosen: ${state.selectedRecommendation?.title || "Selected page"}`,
           `Reference URL: ${state.selectedRecommendation?.source_url || "-"}`,
+          `Final URL fetched: ${selection.final_url || state.selectedRecommendation?.source_url || "-"}`,
+          `Platform detected: ${selection.platform || "unknown"}`,
+          `Fetch status: ${selection.fetch_ok ? "Real page data fetched" : "Limited fetch, partial data only"}`,
+          `What is selling: ${selection.what_is_selling || "Not detected"}`,
+          `Marketing style: ${selection.marketing_style || "Not detected"}`,
+          `Description: ${selection.description || "Not detected"}`,
+          `Likes: ${selection.likes || "Not available"}`,
+          `Comments: ${selection.comments || "Not available"}`,
+          `Views: ${selection.views || "Not available"}`,
+          `Followers: ${selection.followers || "Not available"}`,
           `Tone direction: ${selection.tone}`,
           `Headline style: ${selection.headline_style}`,
           `CTA style: ${selection.cta_style}`,
-          `Study note: This page leans on a strong offer, repeated CTA usage, and proof-driven structure.`,
+          `Proof strategy: ${selection.proof_strategy || "Not detected"}`,
         ].join("\n");
+      }
+
+      async function waitForTaskCompletion(taskId) {
+        for (let attempt = 0; attempt < 50; attempt += 1) {
+          const task = await api(`/projects/${state.projectId}/tasks/${taskId}`);
+          if (["completed", "failed", "blocked"].includes(task.status)) {
+            return task;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 150));
+        }
+        return await api(`/projects/${state.projectId}/tasks/${taskId}`);
+      }
+
+      async function generateStudySummary() {
+        if (!state.projectId) {
+          renderState("Start with Step 1 first.");
+          return;
+        }
+        if (state.selectedPageSummary) {
+          qs("study_summary").textContent = selectedPatternSummary(state.selectedPageSummary);
+          revealStudySummary();
+          renderState("Study summary refreshed.");
+          return;
+        }
+        if (qs("manual_page_url").value.trim()) {
+          await useManualUrl();
+          return;
+        }
+        if (state.recommendationId) {
+          await selectTrendyPage();
+          return;
+        }
+        renderState("Choose a scanned page or enter a URL first.");
       }
 
       async function scanTrendyPages() {
@@ -370,20 +655,35 @@
           const task = await api(`/projects/${state.projectId}/trend-scan`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ force_refresh: true }),
+            body: JSON.stringify({ force_refresh: true, source_type: qs("platform_type").value }),
           });
           const recommendations = await api(`/projects/${state.projectId}/recommendations`);
           state.recommendationMap = Object.fromEntries(recommendations.map((item) => [item.id, item]));
-          const select = qs("recommendation_select");
-          select.innerHTML = "";
+          const cardBox = qs("recommendation_cards");
+          cardBox.innerHTML = "";
           recommendations.forEach((rec) => {
-            const option = document.createElement("option");
-            option.value = rec.id;
-            option.textContent = `${rec.title} (${rec.score.toFixed(2)})`;
-            select.appendChild(option);
+            const card = document.createElement("article");
+            card.className = "choice-card";
+            card.innerHTML = `
+              <strong>${rec.title}</strong>
+              <div style="color:#6b5f51; font-size:0.88rem;">Score ${rec.score.toFixed(2)}</div>
+              <a href="${rec.source_url}" target="_blank" rel="noopener noreferrer">${rec.source_url}</a>
+              <div style="margin-top:6px; color:#6b5f51; font-size:0.84rem;">${(rec.reasons || []).slice(0, 2).join(" • ")}</div>
+              <button type="button">Use This Page</button>
+            `;
+            const selectAndLoad = async () => {
+              previewRecommendation(rec.id);
+              await selectTrendyPage();
+            };
+            card.onclick = () => { void selectAndLoad(); };
+            card.querySelector("a").onclick = (event) => event.stopPropagation();
+            card.querySelector("button").onclick = (event) => {
+              event.stopPropagation();
+              void selectAndLoad();
+            };
+            cardBox.appendChild(card);
           });
           if (recommendations.length) {
-            select.value = recommendations[0].id;
             previewRecommendation(recommendations[0].id);
           }
           qs("scan_status").className = "status-line";
@@ -400,6 +700,13 @@
         const rec = state.recommendationMap[recommendationId];
         state.recommendationId = recommendationId;
         state.selectedRecommendation = rec || null;
+        document.querySelectorAll(".choice-card").forEach((node) => node.classList.remove("selected"));
+        const selectedCard = Array.from(document.querySelectorAll(".choice-card")).find((node) =>
+          node.querySelector("a")?.getAttribute("href") === rec?.source_url
+        );
+        if (selectedCard) {
+          selectedCard.classList.add("selected");
+        }
         qs("study_summary").textContent = rec
           ? recommendationSummary(rec)
           : "Run a scan and choose a page to see the study summary.";
@@ -422,23 +729,20 @@
           qs("scan_status").className = "status-line success";
           qs("scan_status").textContent = `Selected page: ${state.selectedRecommendation?.title || "Trend page saved"}`;
           revealStudySummary();
-          renderState("Trend page selected and saved as the study reference.");
+          renderState("Trend page selected and study summary generated.");
         } catch (e) {
           renderState(String(e));
         }
       }
 
       async function useManualUrl() {
-        if (!state.projectId) {
-          renderState("Scan first so the project exists.");
-          return;
-        }
         const sourceUrl = qs("manual_page_url").value.trim();
         if (!sourceUrl) {
           renderState("Enter a URL first.");
           return;
         }
         try {
+          await ensureProject();
           const selection = await api(`/projects/${state.projectId}/reference-page/select`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -457,7 +761,7 @@
           qs("scan_status").className = "status-line success";
           qs("scan_status").textContent = `Selected page: ${sourceUrl}`;
           revealStudySummary();
-          renderState("Manual URL selected and saved.");
+          renderState("Manual URL selected and study summary generated.");
         } catch (e) {
           renderState(String(e));
         }
@@ -483,21 +787,35 @@
           state.uploadId = upload.upload_id;
           qs("upload_status").textContent = `Uploaded product photo: ${upload.file_path}`;
           renderState("Product photo uploaded.");
+          if (state.selectedPageSummary) {
+            await makeMarketingStrategy({ autoGenerateMaterials: true, autoTriggered: true });
+          }
         } catch (e) {
           renderState(String(e));
         }
       }
 
-      async function makeMarketingStrategy() {
+      async function makeMarketingStrategy(options = {}) {
+        const { autoGenerateMaterials = false, autoTriggered = false } = options;
         if (!state.projectId || !state.recommendationId) {
+          qs("strategy_summary").textContent = "Step 1 needed.\n\nChoose a trendy page first.";
           renderState("Choose a trendy page first.");
-          return;
+          return false;
+        }
+        if (!state.selectedPageSummary) {
+          qs("strategy_summary").textContent = "Step 2 needed.\n\nSelect or enter a trend page first so the study summary exists.";
+          renderState("Select or enter a trend page first so the study summary exists.");
+          return false;
         }
         if (!state.uploadId) {
+          qs("strategy_summary").textContent = "Step 3 needed.\n\nUpload the product photo first.";
           renderState("Upload the product photo first.");
-          return;
+          return false;
         }
         try {
+          qs("strategy_summary").textContent = autoTriggered
+            ? "Product photo uploaded. AI strategy agent is building the executable plan..."
+            : "AI strategy agent is building the executable plan...";
           const generated = await api(`/projects/${state.projectId}/campaigns/generate`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -505,23 +823,374 @@
           });
           state.taskId = generated.task_id;
           state.campaignId = generated.campaign_id;
-          const task = await api(`/projects/${state.projectId}/tasks/${state.taskId}`);
+          const task = await waitForTaskCompletion(state.taskId);
           if (task.status !== "completed") {
-            qs("strategy_summary").textContent = `Strategy task status: ${task.status}`;
-            renderState("Strategy generation started. Click again in a moment if the task is still running.");
-            return;
+            qs("strategy_summary").textContent = [
+              `Strategy task status: ${task.status}`,
+              task.checkpoint ? `Last checkpoint: ${task.checkpoint}` : "",
+              task.error_reason ? `Reason: ${task.error_reason}` : "The backend did not return a more specific reason.",
+            ].filter(Boolean).join("\n\n");
+            renderState("Strategy generation did not complete successfully.");
+            return false;
           }
+          const strategy = await api(`/projects/${state.projectId}/campaigns/${state.campaignId}/strategy`);
+          state.strategyPlan = strategy.strategy_plan;
           const artifacts = await api(`/projects/${state.projectId}/campaigns/${state.campaignId}/artifacts`);
           state.materials = artifacts;
           const hero = artifacts.find((item) => item.artifact_type === "hero");
           const brief = artifacts.find((item) => item.artifact_type === "creative_brief");
           qs("strategy_summary").textContent = [
-            "Strategy created.",
+            "Executable AI marketing plan:",
+            strategy.strategy_plan,
             hero ? `Hero direction: ${hero.content}` : "Hero direction pending.",
             brief ? `Creative brief: ${brief.content}` : "Creative brief pending.",
           ].join("\n\n");
-          renderState("Marketing strategy created.");
+          renderState(
+            autoGenerateMaterials
+              ? "Marketing strategy created. Loading materials now."
+              : "Marketing strategy created."
+          );
+          qs("strategy_summary").scrollIntoView({ behavior: "smooth", block: "center" });
+          if (autoGenerateMaterials) {
+            await generateMarketingMaterials({ autoTriggered: true, skipStrategyBootstrap: true });
+          }
+          return true;
         } catch (e) {
+          qs("strategy_summary").textContent = `Strategy request failed.\n\n${String(e)}`;
+          renderState(String(e));
+          return false;
+        }
+      }
+
+      function renderMaterials(artifacts) {
+        const container = qs("materials_output");
+        container.innerHTML = "";
+        if (!artifacts.length) {
+          container.innerHTML = `<article class="material"><h3>No Materials Yet</h3><p>The campaign finished without saved marketing materials. Try the strategy step again.</p></article>`;
+          return;
+        }
+        artifacts.forEach((artifact) => {
+          const card = document.createElement("article");
+          card.className = "material";
+          card.innerHTML = `<h3>${materialTitle(artifact.artifact_type)}</h3>${renderMaterialBody(artifact)}`;
+          container.appendChild(card);
+        });
+      }
+
+      function renderDeliverables(deliverables) {
+        const container = qs("materials_output");
+        container.innerHTML = "";
+        const entries = [
+          ["media_assets", "Generated Media"],
+          ["hero", "Hero Copy"],
+          ["product_description", "Product Description"],
+          ["ads", "Ads"],
+          ["email", "Email"],
+          ["social", "Social"],
+          ["landing_page", "Landing Page"],
+        ];
+        entries.forEach(([key, title]) => {
+          if (!deliverables || deliverables[key] == null) {
+            return;
+          }
+          const card = document.createElement("article");
+          card.className = "material";
+          card.innerHTML = `<h3>${title}</h3>${renderDeliverableBody(key, deliverables[key])}`;
+          container.appendChild(card);
+        });
+      }
+
+      function escapeHtml(value) {
+        return String(value ?? "")
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#39;");
+      }
+
+      function parseJsonMaybe(content) {
+        if (typeof content !== "string") return content;
+        try {
+          return JSON.parse(content);
+        } catch {
+          return null;
+        }
+      }
+
+      function normalizedLines(content) {
+        return String(content || "")
+          .split("\n")
+          .map((line) => line.trim())
+          .filter(Boolean);
+      }
+
+      function parseEmail(content) {
+        const match = String(content || "").match(/Subject:\s*(.*?)(?:\n|$)\s*Body:\s*([\s\S]*)/i);
+        if (match) {
+          return { subject: match[1].trim(), body: match[2].trim() };
+        }
+        const lines = normalizedLines(content);
+        return {
+          subject: lines[0] || "Email subject",
+          body: lines.slice(1).join("\n") || String(content || ""),
+        };
+      }
+
+      function splitConcepts(content) {
+        const raw = String(content || "");
+        const parts = raw.split(/\n(?=Concept\s*\d+:)/i).map((part) => part.trim()).filter(Boolean);
+        return parts.length ? parts : normalizedLines(content);
+      }
+
+      function splitScenes(content) {
+        const raw = String(content || "");
+        const parts = raw.split(/\n(?=(?:Hook:|Scene\s*\d+:|CTA:))/i).map((part) => part.trim()).filter(Boolean);
+        return parts.length ? parts : normalizedLines(content);
+      }
+
+      function renderHero(content) {
+        const parsed = typeof content === "string" ? (parseJsonMaybe(content) || {}) : (content || {});
+        const headline = parsed.headline || "Hero headline";
+        const subheadline = parsed.subheadline || "";
+        const cta = parsed.cta || "Learn More";
+        return `
+          <div class="hero-preview">
+            <h4>Landing Hero Preview</h4>
+            <h5>${escapeHtml(headline)}</h5>
+            <p>${escapeHtml(subheadline)}</p>
+            <button type="button">${escapeHtml(cta)}</button>
+          </div>
+        `;
+      }
+
+      function renderAds(content) {
+        const parsed = typeof content === "string" ? parseJsonMaybe(content) : content;
+        const ads = Array.isArray(parsed) ? parsed : normalizedLines(String(content || "").replaceAll('","', '"\n"'));
+        return `
+          <div class="preview-stack">
+            <div class="ad-list">
+              ${ads.map((ad, index) => {
+                const title = typeof ad === "object" && ad ? ad.title || `Ad ${index + 1}` : `Ad ${index + 1}`;
+                const body = typeof ad === "object" && ad ? [ad.body, ad.cta].filter(Boolean).join("\n") : String(ad).replace(/^"|"$/g, "");
+                return `<div class="ad-item"><strong>${escapeHtml(title)}</strong><br>${escapeHtml(body)}</div>`;
+              }).join("")}
+            </div>
+          </div>
+        `;
+      }
+
+      function renderEmail(content) {
+        const email = typeof content === "object" && content ? content : parseEmail(content);
+        return `
+          <div class="email-preview">
+            <h4>Email Preview</h4>
+            <div class="email-subject">${escapeHtml(email.subject)}</div>
+            <div class="plain-copy">${escapeHtml(email.body)}</div>
+          </div>
+        `;
+      }
+
+      function renderSocial(content) {
+        const social = typeof content === "object" && content ? content : { caption: content };
+        const hashtags = Array.isArray(social.hashtags) && social.hashtags.length ? `\n\n${social.hashtags.join(" ")}` : "";
+        return `
+          <div class="social-preview">
+            <h4>Social Post Preview</h4>
+            <div class="social-shell">
+              <div class="social-meta">@yourbrand</div>
+              <div class="plain-copy">${escapeHtml((social.caption || "") + hashtags)}</div>
+            </div>
+          </div>
+        `;
+      }
+
+      function renderPageDraft(content) {
+        const parsed = typeof content === "object" && content ? content : null;
+        const sections = parsed?.sections
+          ? parsed.sections.map((section) => typeof section === "object" ? `${section.title || "Section"}: ${section.copy || ""}` : String(section))
+          : String(content || "").split(/->|\n/).map((part) => part.trim()).filter(Boolean);
+        return `
+          <div class="section-list">
+            <h4>Landing Page Sections</h4>
+            <div class="brief-list">
+              ${sections.map((section, index) => `<div class="section-item"><strong>${index + 1}.</strong> ${escapeHtml(section)}</div>`).join("")}
+            </div>
+          </div>
+        `;
+      }
+
+      function renderCreativeBrief(content) {
+        const parsed = typeof content === "string" ? (parseJsonMaybe(content) || {}) : (content || {});
+        const items = Object.entries(parsed);
+        if (!items.length) {
+          return `<div class="creative-brief"><h4>Creative Brief</h4><div class="plain-copy">${escapeHtml(content)}</div></div>`;
+        }
+        return `
+          <div class="creative-brief">
+            <h4>Creative Brief</h4>
+            <div class="brief-list">
+              ${items.map(([key, value]) => `<div class="brief-item"><strong>${escapeHtml(key.replaceAll("_", " "))}</strong><br>${escapeHtml(Array.isArray(value) ? value.join(", ") : value)}</div>`).join("")}
+            </div>
+          </div>
+        `;
+      }
+
+      function renderImageConcepts(content) {
+        const concepts = Array.isArray(content) ? content : splitConcepts(content);
+        return `
+          <div class="concept-list">
+            ${concepts.map((concept, index) => `
+              <div class="concept-card">
+                <div class="concept-visual">${escapeHtml(typeof concept === "object" ? (concept.scene || concept.title || "").slice(0, 90) : ((concept.split(":")[1] || concept).trim().slice(0, 90)))}</div>
+                <div class="concept-body">
+                  <span class="concept-tag">Concept ${index + 1}</span>
+                  <div class="plain-copy">${escapeHtml(typeof concept === "object" ? [concept.title, concept.scene, concept.overlay, concept.cta].filter(Boolean).join("\n") : concept)}</div>
+                </div>
+              </div>
+            `).join("")}
+          </div>
+        `;
+      }
+
+      function renderVideoScript(content) {
+        const scenes = Array.isArray(content) ? content : splitScenes(content);
+        return `
+          <div class="storyboard">
+            <h4>Video Storyboard</h4>
+            <div class="storyboard-list">
+              ${scenes.map((scene, index) => `
+                <div class="story-scene">
+                  <div class="story-scene-visual">${escapeHtml(typeof scene === "object" ? ((scene.visual || scene.description || "").slice(0, 80)) : scene.slice(0, 80))}</div>
+                  <div class="story-scene-body">
+                    <span class="scene-tag">${escapeHtml(typeof scene === "object" ? (scene.scene || `Beat ${index}`) : (index === 0 ? "Hook" : `Beat ${index}`))}</span>
+                    <div class="plain-copy">${escapeHtml(typeof scene === "object" ? [scene.description, scene.visual, scene.voiceover, scene.on_screen_text].filter(Boolean).join("\n") : scene)}</div>
+                  </div>
+                </div>
+              `).join("")}
+            </div>
+          </div>
+        `;
+      }
+
+      function renderDeliverableBody(type, content) {
+        switch (type) {
+          case "media_assets":
+            return renderMediaAssets(content);
+          case "hero":
+            return renderHero(content);
+          case "ads":
+            return renderAds(content);
+          case "email":
+            return renderEmail(content);
+          case "social":
+            return renderSocial(content);
+          case "landing_page":
+            return renderPageDraft(content);
+          default:
+            return `<div class="plain-copy">${escapeHtml(typeof content === "string" ? content : JSON.stringify(content, null, 2))}</div>`;
+        }
+      }
+
+      function renderMediaAssets(content) {
+        const images = Array.isArray(content?.images) ? content.images : [];
+        const videos = Array.isArray(content?.videos) ? content.videos : [];
+        const errors = Array.isArray(content?.errors) ? content.errors.filter(Boolean) : [];
+        if (!images.length && !videos.length) {
+          return `<div class="plain-copy">${escapeHtml(errors.join("\n") || "No generated media files yet. This usually means the current API key does not have image/video generation access, or video generation is still unavailable for this account.")}</div>`;
+        }
+        return `
+          <div class="media-gallery">
+            ${images.map((asset) => `
+              <div class="media-tile">
+                <img src="${escapeHtml(asset.url)}" alt="${escapeHtml(asset.label || "Generated marketing image")}" />
+                <div class="media-label">${escapeHtml(asset.label || "Generated image")}</div>
+              </div>
+            `).join("")}
+            ${videos.map((asset) => `
+              <div class="media-tile">
+                <video src="${escapeHtml(asset.url)}" controls playsinline></video>
+                <div class="media-label">${escapeHtml(asset.label || "Generated video")}</div>
+              </div>
+            `).join("")}
+            ${errors.length ? `<div class="plain-copy">${escapeHtml(errors.join("\n"))}</div>` : ""}
+          </div>
+        `;
+      }
+
+      function renderMaterialBody(artifact) {
+        const content = artifact.content || "";
+        switch (artifact.artifact_type) {
+          case "hero":
+            return renderHero(content);
+          case "ads":
+            return renderAds(content);
+          case "email":
+            return renderEmail(content);
+          case "social":
+            return renderSocial(content);
+          case "page_draft":
+            return renderPageDraft(content);
+          case "creative_brief":
+            return renderCreativeBrief(content);
+          case "image_concepts":
+            return renderImageConcepts(content);
+          case "video_script":
+            return renderVideoScript(content);
+          default:
+            return `<div class="plain-copy">${escapeHtml(content)}</div>`;
+        }
+      }
+
+      function renderMaterialsMessage(title, body) {
+        qs("materials_output").innerHTML = `<article class="material"><h3>${title}</h3><p>${body}</p></article>`;
+      }
+
+      async function loadCampaignArtifacts() {
+        for (let attempt = 0; attempt < 8; attempt += 1) {
+          const artifacts = await api(`/projects/${state.projectId}/campaigns/${state.campaignId}/artifacts`);
+          if (artifacts.length) {
+            return artifacts;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 200));
+        }
+        return [];
+      }
+
+      async function generateMarketingMaterials(options = {}) {
+        const { autoTriggered = false, skipStrategyBootstrap = false } = options;
+        if (!state.projectId || !state.recommendationId) {
+          renderMaterialsMessage("Step 1 Needed", "Choose a trend page first.");
+          renderState("Choose a trend page first.");
+          return;
+        }
+        if (!state.uploadId) {
+          renderMaterialsMessage("Step 3 Needed", "Upload the product photo first.");
+          renderState("Upload the product photo first.");
+          return;
+        }
+        if (!skipStrategyBootstrap && !state.campaignId) {
+          renderMaterialsMessage("Preparing", "Building strategy first so materials can be generated...");
+          const strategyReady = await makeMarketingStrategy({ autoGenerateMaterials: false, autoTriggered: true });
+          if (!strategyReady) {
+            renderMaterialsMessage("Strategy Required", "The strategy step did not complete, so there are no materials to load yet.");
+            return;
+          }
+        }
+        if (!state.campaignId) {
+          renderMaterialsMessage("No Campaign Yet", "Make the marketing strategy first.");
+          renderState("Make the marketing strategy first.");
+          return;
+        }
+        try {
+          renderMaterialsMessage("Generating", "Loading all marketing materials from the completed campaign...");
+          const payload = await api(`/projects/${state.projectId}/campaigns/${state.campaignId}/deliverables`);
+          state.deliverables = payload.deliverables;
+          renderDeliverables(payload.deliverables);
+          qs("materials_output").scrollIntoView({ behavior: "smooth", block: "start" });
+          renderState(autoTriggered ? "AI deliverables agent finished building outputs." : "AI deliverables loaded.");
+        } catch (e) {
+          renderMaterialsMessage("Loading Failed", String(e));
           renderState(String(e));
         }
       }
@@ -535,32 +1204,9 @@
           social: "Social",
           page_draft: "Page Draft",
           creative_brief: "Creative Brief",
+          image_concepts: "Image Concepts",
+          video_script: "Video Script",
         }[type] || type;
-      }
-
-      async function generateMarketingMaterials() {
-        if (!state.projectId || !state.campaignId) {
-          renderState("Make the marketing strategy first.");
-          return;
-        }
-        try {
-          const artifacts = await api(`/projects/${state.projectId}/campaigns/${state.campaignId}/artifacts`);
-          state.materials = artifacts;
-          const container = qs("materials_output");
-          container.innerHTML = "";
-          artifacts.forEach((artifact) => {
-            const card = document.createElement("article");
-            card.className = "material";
-            card.innerHTML = `
-              <h3>${materialTitle(artifact.artifact_type)}</h3>
-              <p>${artifact.content}</p>
-            `;
-            container.appendChild(card);
-          });
-          renderState("Marketing materials loaded.");
-        } catch (e) {
-          renderState(String(e));
-        }
       }
 
       renderState("Choose a source type and start with the trendy-page scan.");

@@ -28,6 +28,7 @@ class CampaignListOut(BaseModel):
 
 class TrendScanRequest(BaseModel):
     force_refresh: bool = False
+    source_type: str | None = None
 
 
 class TrendRecommendationOut(BaseModel):
@@ -69,8 +70,20 @@ class CampaignGenerateResponse(BaseModel):
     status: str
 
 
+class StrategyPlanOut(BaseModel):
+    campaign_id: str
+    strategy_plan: str
+
+
+class DeliverablesOut(BaseModel):
+    campaign_id: str
+    deliverables: dict
+
+
 class OpenAIKeyUpdateRequest(BaseModel):
     api_key: str
+    image_api_key: str | None = None
+    video_api_key: str | None = None
 
 
 class CampaignApprovalRequest(BaseModel):
