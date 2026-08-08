@@ -21,6 +21,10 @@ kiosk-app/
 
 | | |
 |---|---|
-| Plan | Draft v1 — awaiting review |
+| Plan | Draft v2 — awaiting review |
+| Canvas | 1080 × 1920 portrait, locked |
+| App language | Kotlin + Jetpack Compose |
+| Backend language | TypeScript (Node/Fastify) + Postgres |
+| Payment | Square card reader — Terminal API primary (see PLAN.md §4.3a) |
 | Square connection | Not yet authorized |
 | Hardware | Not yet validated (see PLAN.md §2 checklist) |

@@ -1,9 +1,11 @@
 # Tea Hut Self-Order Kiosk — Product & Technical Plan
 
-**Status:** Draft v1 — for review, nothing built yet
+**Status:** Draft v2 — for review, nothing built yet
 **Target:** Android touchscreen ("incell" smart portable TV), in-store, Tea Hut branches only
+**Canvas:** **1080 × 1920 portrait**, locked orientation
+**Stack:** Kotlin + Jetpack Compose (app) · TypeScript/Node + Postgres (backend) · TypeScript/React (admin)
 **Backend of record:** Square (catalog, orders, payments, locations, loyalty)
-**Reference UX:** Chowbus POS kiosk, MenuSifu kiosk (bubble-tea flow)
+**Reference UX:** Chowbus POS kiosk (primary visual target), MenuSifu kiosk (bubble-tea flow)
 
 ---
 
@@ -11,7 +13,7 @@
 
 | # | Decision | Recommendation | Why it matters |
 |---|---|---|---|
-| 1 | **How does the customer pay?** | **Square Terminal API** — a Square Terminal mounted next to the TV takes the card; the TV never touches card data. | Square **prohibits** the Mobile Payments SDK (card reader attached to your own Android device) in *unattended* kiosks, and only allows *attended* ones under strict conditions. It also requires Google Play Services + a validated device list that a generic portable TV will likely fail. Terminal API is plain HTTPS — works on any Android screen. |
+| 1 | **How does the customer pay?** | Card, on **Square hardware** — confirmed. Primary path is the **Terminal API**: a Square Terminal mounted next to the TV takes the card and the TV never touches card data. | Square **prohibits** the Mobile Payments SDK (a Square Reader puck paired to our own Android app) in *unattended* kiosks and allows *attended* ones only under strict conditions; it also needs Google Play Services and a validated device that a generic portable TV will likely fail. Terminal API is plain HTTPS, so it works on any Android screen. See §4.3a for the Reader alternative. |
 | 2 | **What is a "user account"?** | Accounts are **Tea Hut staff/manager accounts in our own backend**, not Square logins. Square is connected **once per merchant** via OAuth; staff log in to pick which branch this kiosk serves. | Keeps the Square token server-side and long-lived; a kiosk never holds Square credentials. |
 | 3 | **How does the Square link stay "long term"?** | Square **OAuth authorization-code flow** (not PKCE). Refresh token is valid **until revoked**; access token expires every 30 days and is auto-refreshed by a backend job. | PKCE refresh tokens are single-use and die after 90 days — wrong choice for a permanent install. |
 
@@ -36,7 +38,7 @@
 ## 2. Hardware & environment
 
 **Kiosk unit (per station)**
-- Android touchscreen "portable TV", 21"–32", Android 9 (API 28)+ — *must be verified, see checklist*
+- Android touchscreen "portable TV", 21"–32", **1080 × 1920 portrait**, Android 9 (API 28)+ — *must be verified, see checklist*
 - Square Terminal (payment), mounted at reachable height
 - Optional: receipt printer (network ESC/POS, e.g. Epson TM-m30 LAN) — or skip printing, use SMS/email receipts + a number-call screen
 - Wi-Fi or Ethernet, PoE preferred; always-on power, surge protected
@@ -45,7 +47,8 @@
 - [ ] Confirm it is real Android (not a Linux/RTOS "smart TV" shell) — `adb shell getprop ro.build.version.release`
 - [ ] `adb` over USB or network is enabled (needed for kiosk provisioning)
 - [ ] Touch is multi-touch capacitive, and reports as a touchscreen (not a mouse pointer)
-- [ ] Screen orientation can be locked to portrait (kiosk flows are portrait-first)
+- [ ] Screen orientation can be locked to portrait; app renders 1080 × 1920 even if the panel reports 1920 × 1080 landscape natively
+- [ ] Reported `densityDpi` and `WindowMetrics` — needed to pin the design-pixel scale (see §6)
 - [ ] Google Play Services present? (not required on the Terminal API path — but needed for FCM push; if absent we fall back to polling)
 - [ ] Device Owner provisioning possible (`dpm set-device-owner`) — required for true kiosk lockdown
 - [ ] Screen never sleeps on AC power; auto-boots when power is restored
@@ -84,10 +87,16 @@
 - Remote config, remote kill-switch, remote menu overrides (86'd items), OTA update pointers.
 - Cheap to host: single small VM or a container ($10–20/mo), Postgres, one cron worker.
 
-**Recommended stack**
-- App: **Kotlin + Jetpack Compose**, single-activity, MVVM; Room for local cache; WorkManager for the offline queue. (Compose gives the animated, image-heavy MenuSifu look without fighting a WebView; a React Native/Flutter build is viable if you'd rather share code with a future iPad version — say the word and I'll re-cost it.)
-- Backend: **Node + TypeScript (Fastify)** or **Python FastAPI** + **Postgres** + Redis. Square's official SDK exists for both.
-- Admin console: small web app (same backend) for staff accounts, branch mapping, kiosk registry, menu overrides.
+### Languages & stack (decided)
+
+| Layer | Language / framework | Why |
+|---|---|---|
+| **Kiosk app** | **Kotlin + Jetpack Compose** (single-activity, MVVM, Room for the menu cache, WorkManager for the offline queue) | Native gets us the Chowbus feel — big photo cards, sliding modifier sheets, animated cart badge, 60fps scroll — without fighting a WebView's touch and scroll behavior. It also puts the kiosk-critical APIs (Device Owner / lock-task, boot receiver, ESC/POS printing, watchdog) directly in reach instead of behind a bridge. Fewer moving parts on a device that runs 14 hours a day unattended. |
+| **Backend** | **TypeScript on Node (Fastify)** + **Postgres** + Redis | Square's TypeScript SDK is the best-maintained of the official set, and the types are shared with the admin console. (Python/FastAPI is an equally fine choice if you have a Python-shop preference — Square ships an SDK for it too.) |
+| **Admin console** | **TypeScript + React** | Shares API types with the backend; nothing exotic needed. |
+| **Display languages** | English + 中文 at launch, Español behind a config toggle | Matches the Chowbus/MenuSifu multilingual kiosk pattern. |
+
+**Rejected alternatives:** React Native / Flutter (would need native bridges for exactly the parts that matter most — kiosk lockdown, printing, boot behavior — while adding a runtime; reconsider only if an iPad version becomes a requirement) and a WebView/PWA shell (touch latency, scroll jank on cheap Android SoCs, and no clean path to lock-task mode).
 
 ---
 
@@ -121,6 +130,21 @@
 
 **Terminal pairing:** admin console → `CreateDeviceCode` for the branch → 5-minute code entered on the Terminal → `device.code.paired` webhook returns the permanent `device_id`, which we bind to that kiosk record. Re-pair is a two-tap operation for staff.
 
+### 4.3a If "Square card reader" means the Reader puck, not the Terminal
+
+Both are "Square card readers" and the difference is not cosmetic:
+
+| | **Square Terminal** (recommended) | **Square Reader** (contactless/chip puck) |
+|---|---|---|
+| Integration | Terminal API — plain HTTPS from our backend | Mobile Payments SDK — runs **inside** the Android app |
+| Device requirements on the TV | None. Any Android screen works. | Play Services, API 28+, and a device Square supports |
+| Kiosk usage | Permitted | **Attended kiosks only** — must be in a worker's line of sight, inaccessible outside business hours, staff trained to assist |
+| PCI scope | Lightest — card data never reaches our code | Still light, but the SDK lives in our app |
+| Hardware cost | ~$299/kiosk | ~$59/kiosk |
+| Risk | Second small screen at the station | Real chance the portable TV simply can't run the SDK |
+
+A Tea Hut kiosk inside the store during business hours would likely qualify as *attended*, so the Reader is not off the table — but it hinges entirely on whether that specific TV passes Square's device requirements, which we can't know until §2's hardware validation runs. **Plan of record: build the payment layer behind one internal interface (`PaymentProcessor`) with the Terminal API as the first implementation.** If hardware validation clears the Reader, adding it is a contained piece of work, not a rewrite.
+
 ### 4.4 Alternate tenders (all optional toggles per branch)
 - **Cash / pay at counter** — order created as unpaid/OPEN, ticket prints, customer pays a cashier on Square POS. Good day-one fallback while the Terminal is being set up.
 - **QR pay on phone** — backend creates a Square payment link, kiosk shows a QR; customer pays on their own phone. Zero extra hardware; also the disaster fallback if a Terminal dies.
@@ -149,11 +173,93 @@ Device registry in the admin console: name ("Tea Hut Flushing #2"), branch, Term
 
 ---
 
-## 6. Feature list
+## 6. UI/UX spec — 1080 × 1920 portrait, Chowbus-style
+
+### 6.1 Pixel strategy
+The panel is a fixed, known size, so we design in **literal pixels** rather than guessing at dp. At startup the app overrides Compose's density so that **1 design px = 1 physical px** on a 1080-wide screen:
+
+```kotlin
+CompositionLocalProvider(
+    LocalDensity provides Density(
+        density = windowWidthPx / 1080f,       // 1.0 on the target panel
+        fontScale = 1f                          // ignore system font scaling
+    )
+) { KioskApp() }
+```
+
+Everything below is then specified as exact numbers, and the same build still scales cleanly onto a tablet or a different panel later. Orientation is pinned `portrait` in the manifest; if the panel reports 1920 × 1080 landscape natively, we rotate at the app level and it renders 1080 × 1920 regardless.
+
+### 6.2 Global layout grid (menu screen — the Chowbus signature)
+
+```
+ 0 ┌────────────────────────────────────────────┐  y=0
+   │  HEADER  160px                             │  logo · language pill · Here/To-Go · Start Over
+160├──────────┬─────────────────────────────────┤
+   │          │                                 │
+   │ CATEGORY │   ITEM GRID                     │  2 columns × 400px cards, 20px gutter
+   │  RAIL    │   x: 260 → 1060                 │  card: 400w × 440h
+   │  240px   │   scrolls vertically            │    image 400×260 (WebP, rounded 24)
+   │  icons + │                                 │    name 36px semibold, 2 lines max
+   │  labels  │   sticky category headers       │    price 34px + circular "+" 88×88
+   │  sticky  │                                 │
+   │  active  │                                 │
+   │  pill    │                                 │
+1640├──────────┴─────────────────────────────────┤
+   │  CART BAR  280px                           │  qty badge · subtotal 44px · CHECKOUT pill 520×120
+1920└────────────────────────────────────────────┘
+```
+
+- **Header (160px):** Tea Hut logo left; language pill (EN / 中文) and Here/To-Go segmented control right; "Start Over" as a text button, deliberately low-contrast so it isn't tapped by accident.
+- **Category rail (240px):** vertical, icon + label, sticky highlight pill on the active category, scroll-synced with the grid. This left-rail-plus-grid split *is* the Chowbus kiosk layout and is what makes a 40-item boba menu navigable without paging.
+- **Item grid:** two columns is the right density at 1080px — a third column drops cards under the 320px width where photos stop selling. Sticky category headers as you scroll.
+- **Cart bar (280px):** always visible, never collapses. Item count badge, running subtotal, and one unmissable CHECKOUT button. Empty state shows a muted "Your cart is empty" instead of hiding.
+
+### 6.3 Item detail (the customization sheet)
+Full-screen modal sliding up over the menu in 250ms:
+
+```
+hero image      1080 × 720   (full-bleed, close "×" at 88×88 top-right)
+name + price    36px padding, title 56px, price 44px
+description     32px, muted, 3 lines max
+─────────────────────────────────────────
+SIZE            required · chips 320×112, selected = filled
+ICE LEVEL       required · chips
+SUGAR LEVEL     required · chips
+TOPPINGS        optional, max N · rows 120px w/ checkbox + price delta
+MILK OPTION     optional · rows
+SPECIAL REQUEST tap to open keyboard
+─────────────────────────────────────────
+sticky footer   200px · qty stepper (−  2  +) · ADD TO CART · $6.75
+```
+
+- Required groups are enforced from Square's modifier `min/max` — the Add button stays disabled with an inline "Choose a size" hint until they're satisfied, and the sheet auto-scrolls to the first unsatisfied group when they try.
+- Price in the footer updates live as modifiers are tapped. This one detail is why kiosk topping attach-rates beat counter ordering.
+- Chip-per-choice (not dropdowns) for ice/sugar — one tap, no hidden state, works with a fingertip.
+
+### 6.4 Design tokens
+| Token | Value |
+|---|---|
+| Type scale (px) | display 64 · title 56 · section 44 · body 36 · caption 28 |
+| Min touch target | 96 × 96 px, 32px minimum spacing between targets |
+| Corner radius | cards 24 · chips 56 (pill) · buttons 60 (pill) |
+| Screen padding | 40px left/right inside the grid area |
+| Motion | 200ms for state, 250ms for sheets, ease-out; no motion longer than 300ms |
+| ADA reach band | all primary actions between y=900 and y=1500 so a seated user can reach them |
+| Contrast | 4.5:1 minimum on all text; high-contrast mode swaps the palette |
+| Palette | Tea Hut brand colors — **needs your logo/brand file**; placeholder warm-neutral + single accent until then |
+
+### 6.5 Assets
+- Item photos: 800 × 520 source, delivered as WebP, preloaded into the Coil disk cache during menu sync so the grid never shows a spinner.
+- Attract loop: 1080 × 1920 H.264 video or a still image carousel, uploaded per branch from the admin console.
+- Every image has a branded placeholder — a menu item with no photo must never render an empty box.
+
+---
+
+## 7. Feature list
 
 Legend: **M** = MVP (launch) · **P1** = fast follow · **P2** = later
 
-### 6.1 Customer ordering
+### 7.1 Customer ordering
 | # | Feature | Pri |
 |---|---|---|
 | 1 | Attract / idle screen: looping video or promo images, "Tap to Order", auto-return after 45s idle | M |
@@ -173,7 +279,7 @@ Legend: **M** = MVP (launch) · **P1** = fast follow · **P2** = later
 | 15 | Item nutrition / allergen sheet | P2 |
 | 16 | Accessibility: high-contrast mode, larger-text mode, a reachable "lower the UI" ADA button for wheelchair height | P1 |
 
-### 6.2 Checkout & payment
+### 7.2 Checkout & payment
 | # | Feature | Pri |
 |---|---|---|
 | 17 | Order review: line items with all modifiers spelled out, tax, total | M |
@@ -189,7 +295,7 @@ Legend: **M** = MVP (launch) · **P1** = fast follow · **P2** = later
 | 27 | Order-number confirmation screen + optional QR to track status | M |
 | 28 | Split payment / multiple tenders | P2 |
 
-### 6.3 Kitchen & store operations
+### 7.3 Kitchen & store operations
 | # | Feature | Pri |
 |---|---|---|
 | 29 | Orders land in Square as normal orders → **Square KDS / kitchen printer** with no extra work | M |
@@ -198,7 +304,7 @@ Legend: **M** = MVP (launch) · **P1** = fast follow · **P2** = later
 | 32 | Daily kiosk sales summary in the admin console (count, AOV, top items, attach rate of toppings) | P1 |
 | 33 | Customer-facing "now serving / ready" board (second screen or same TV when idle) | P2 |
 
-### 6.4 Admin & fleet management
+### 7.4 Admin & fleet management
 | # | Feature | Pri |
 |---|---|---|
 | 34 | Staff accounts, roles, password reset, per-branch permissions | M |
@@ -211,7 +317,7 @@ Legend: **M** = MVP (launch) · **P1** = fast follow · **P2** = later
 | 41 | Remote config push without an app update | P1 |
 | 42 | Audit log (who changed what, who exited kiosk mode) | P1 |
 
-### 6.5 Platform / reliability
+### 7.5 Platform / reliability
 | # | Feature | Pri |
 |---|---|---|
 | 43 | **Kiosk lockdown**: Device Owner + LockTask mode — no status bar, no home/recents, no other apps | M |
@@ -225,7 +331,7 @@ Legend: **M** = MVP (launch) · **P1** = fast follow · **P2** = later
 
 ---
 
-## 7. Screen flow
+## 8. Screen flow
 
 ```
 Attract ──tap──▶ Language ──▶ Here/To Go ──▶ Menu ──tap item──▶ Item Detail
@@ -246,7 +352,7 @@ Every screen: a persistent "Start Over" and a language toggle; every screen auto
 
 ---
 
-## 8. Data model (backend, abbreviated)
+## 9. Data model (backend, abbreviated)
 
 ```
 merchant(id, square_merchant_id, access_token_enc, refresh_token_enc, expires_at, status)
@@ -262,7 +368,7 @@ audit_log(id, actor, action, target, meta_json, at)
 
 ---
 
-## 9. Security & PCI
+## 10. Security & PCI
 
 - Card data never touches the kiosk or our backend — the Square Terminal is a validated P2PE device. Keeps us in the lightest possible PCI scope.
 - Square tokens: encrypted at rest, server-side only, rotated, revocable.
@@ -273,7 +379,7 @@ audit_log(id, actor, action, target, meta_json, at)
 
 ---
 
-## 10. Build plan
+## 11. Build plan
 
 | Phase | Scope | Est. |
 |---|---|---|
@@ -288,20 +394,21 @@ audit_log(id, actor, action, target, meta_json, at)
 
 ---
 
-## 11. Open questions for you
+## 12. Open questions for you
 
-1. **Square Terminal** — does Tea Hut already have one per store, or do we budget one per kiosk (~$299 each)?
+1. **Which Square reader, exactly?** — a **Square Terminal** (handheld with its own screen, ~$299) or a **Square Reader** puck (~$59)? See §4.3a; it decides whether payment runs over HTTPS from the backend or inside the app, and the Reader path is contingent on the TV passing Square's device requirements. Also: does Tea Hut already own hardware, or is it being bought per kiosk?
 2. **How many branches and how many kiosks per branch** at launch?
 3. **Receipts** — do you want a printer at the kiosk, or is an order number on-screen + SMS/email enough? (Skipping the printer removes a whole class of jams and paper-outs.)
 4. **Loyalty** — is Square Loyalty already running at Tea Hut, or is that new?
 5. **Tips at a kiosk** — on or off? (Boba kiosks are split; off is a smoother flow, on is real money.)
 6. **Languages** — is English + Chinese enough for v1, or is Spanish needed day one?
-7. **The exact TV model** — send me the make/model and I'll verify it against the checklist in §2 before we commit to it.
+7. **The exact TV model** — send me the make/model and I'll verify it against the checklist in §2 before we commit to it. Confirm too that **1920 is the tall dimension** (portrait), which is what §6 is designed against.
 8. **Menu photography** — do we have per-item photos already in Square, or does that need to happen? (Kiosk conversion lives and dies on the photos.)
+9. **Tea Hut brand assets** — logo, brand colors, and any font. §6.4 has a placeholder palette until these land.
 
 ---
 
-## 12. Blockers on my side
+## 13. Blockers on my side
 
 - The **Square MCP connector in this session is not authorized**, so I can't inspect the live Tea Hut catalog or locations yet. Authorize it in your claude.ai connector settings when you want me to pull the real menu structure.
 - `developer.squareup.com` is blocked by this environment's network proxy, so API details above come from Square's published docs via search plus general knowledge. Any exact request/response shapes will be verified against the SDK during Phase 0.
