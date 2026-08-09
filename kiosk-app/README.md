@@ -21,11 +21,12 @@ kiosk-app/
 
 | | |
 |---|---|
-| Plan | Draft v3 — awaiting review |
+| Plan | Draft v4 — awaiting review |
+| Device | ApoloSign 24" FHD Smart Portable TV Gen2 — Android 16, EDLA-certified, touch, rolling stand |
 | Canvas | 1080 × 1920 portrait, locked, no logo |
 | App language | Kotlin + Jetpack Compose |
 | Backend language | TypeScript (Node/Fastify) + Postgres |
 | Payment | Square Reader on the kiosk via Mobile Payments SDK (PLAN.md §4.3) |
 | Staff | Square Terminal at the counter receives kiosk orders |
 | Square connection | Not yet authorized |
-| Hardware | **Not yet validated — Phase 0 SDK gate blocks all other work** (PLAN.md §2) |
+| Hardware | Device confirmed; **Phase 0 SDK gate on the real unit still blocks build start** (PLAN.md §2.2) |

@@ -1,7 +1,7 @@
 # Tea Hut Self-Order Kiosk — Product & Technical Plan
 
-**Status:** Draft v3 — for review, nothing built yet
-**Target:** Android touchscreen ("incell" smart portable TV), in-store, Tea Hut branches only
+**Status:** Draft v4 — for review, nothing built yet
+**Target:** **ApoloSign 24" FHD Smart Portable TV Gen2** (Android 16, EDLA-certified, touch, rolling stand), in-store, Tea Hut branches only
 **Canvas:** **1080 × 1920 portrait**, locked orientation, no logo
 **Payment:** Square Reader on the kiosk (Mobile Payments SDK); staff Square Terminal at the counter receives orders
 **Stack:** Kotlin + Jetpack Compose (app) · TypeScript/Node + Postgres (backend) · TypeScript/React (admin)
@@ -38,31 +38,47 @@
 
 ## 2. Hardware & environment
 
-**Kiosk unit (per station)**
-- Android touchscreen "portable TV", 21"–32", **1080 × 1920 portrait**, Android 9 (API 28)+ — *must pass the gate below*
-- **Square Reader (contactless + chip)**, mounted at the kiosk at reachable height, **wired to the TV if the port allows** (preferred over Bluetooth LE: no pairing drift, no battery to die mid-shift). If BLE-only, use the charging dock and keep it permanently powered.
+### 2.1 Confirmed device: ApoloSign 24" Smart Portable TV (Gen2)
+
+| Spec (from listing) | Consequence for us |
+|---|---|
+| 24" FHD touch, portrait-capable on a rolling stand | Matches the 1080 × 1920 canvas exactly. At 24" FHD (~92 ppi), our 96px touch targets are ≈26mm — generously finger-sized — and the type scale reads well at arm's length. |
+| **Android 16** | Way past the SDK's API 28 minimum. It's *new*, so Phase 0 verifies the current Mobile Payments SDK release supports it — a release-notes check, not a rework risk. |
+| **EDLA Certified** | The big one. EDLA = Google's Enterprise Devices Licensing Agreement → **licensed, genuine Google Mobile Services**: real Play Services (the SDK's hard dependency), real Play Store (clean OTA path via managed Google Play), and standard Android Enterprise provisioning for Device Owner lockdown. This retires the worst risk of the Reader path — "off-brand TV with fake or missing GMS." |
+| 128GB storage | Menu images, attract video, logs — no constraint. |
+| **Built-in 5200mAh battery** | Double-edged. Good: rides out power blips, no mid-order blackouts. Bad: an unplugged kiosk *keeps running* and then dies hours later — so the heartbeat must report charging state and alert on "on battery" within minutes, not when it's already dead. Also: permanently-docked Li-ion runs warm; nightly reboot + monitoring covers it. |
+| **On wheels** | Operational hazard, not a convenience. It can drift out of staff line-of-sight (an §4.3a attended-kiosk condition) or simply walk off. Lock the casters, position it against the counter, cable-anchor it, and mount the Reader to the stand column — not the bezel. |
+| Voice remote + camera | Attack surface in a kiosk. Kiosk mode must ignore remote/BT input (a remote press must never exit lock task), the assistant is disabled under Device Owner policy, and the camera is unused in v1 — physically remove or cover the detachable camera. (Later option: loyalty QR scanning.) |
+| Consumer "family dashboard" launcher | Fine — Device Owner provisioning starts from a factory reset and replaces the launcher with our app entirely. Provision via QR/adb before it ever touches the store. |
+
+Also note: ApoloSign is still not a "large manufacturer" in Square's recommended sense (Google/Samsung), so the Phase 0 gate below **stays** — but EDLA + genuine GMS moves it from "real chance of failure" to "expected to pass, verify anyway."
+
+**Per-station hardware**
+- ApoloSign 24" Gen2 (above), casters locked, cable-anchored, on AC at all times
+- **Square Reader (contactless + chip)**, mounted to the stand column at reachable height — **wired via the TV's USB port if it supplies stable power**, else BLE with the charging dock permanently powered
 - Optional: receipt printer (network ESC/POS, e.g. Epson TM-m30 LAN) — or skip printing, use SMS/email receipts + a number-call screen
-- Wi-Fi or Ethernet, PoE preferred; always-on power, surge protected
+- Wi-Fi (device has no Ethernet); give it a reserved DHCP lease and the strongest AP in the room
 
 **At the counter (existing, not per-kiosk):** the staff **Square Terminal**, which receives kiosk orders the same way it receives counter orders.
 
-**Phase 0 hardware gate — do this on the real TV before any app code is written (1 day)**
+### 2.2 Phase 0 hardware gate — run on the actual ApoloSign before any app code (1 day)
 
 *Blocking — a failure here means changing the panel, not changing the plan:*
-- [ ] **Mobile Payments SDK runs and authorizes on this device.** Square does not support rooted devices, custom ROMs, or OEM devices that break its security rules, and recommends major manufacturers. Off-brand TV firmware is the real risk. Test with the SDK's sample app before anything else.
-- [ ] **Google Play Services present and current** — required by the SDK.
-- [ ] Android **API 28+**, not rooted, stock-enough ROM
-- [ ] **Square Reader connects** — wired if possible, else BLE pairs and holds a connection for a full day
-- [ ] Bluetooth (for BLE readers) and the required runtime permissions can be granted and stay granted
+- [ ] **Square's Mobile Payments SDK sample app installs, authorizes, pairs the Reader, and takes a $1 sandbox payment** on this device. (EDLA makes this likely; likely ≠ done.)
+- [ ] Current SDK release supports **Android 16** (release-notes + runtime check)
+- [ ] Play Services present, current, and updatable via Play Store
+- [ ] Not rooted, passes Play Integrity
+- [ ] **Reader connection**: does the USB port power a wired Reader? If BLE: pairs, and holds the connection through a simulated full day (screen on, app foregrounded, 8h+)
+- [ ] Bluetooth + runtime permissions can be granted once and survive reboot
 
 *Non-blocking but shapes the build:*
-- [ ] Confirm it is real Android (not a Linux/RTOS "smart TV" shell) — `adb shell getprop ro.build.version.release`
-- [ ] `adb` over USB or network is enabled (needed for kiosk provisioning)
-- [ ] Touch is multi-touch capacitive, and reports as a touchscreen (not a mouse pointer)
-- [ ] Screen orientation can be locked to portrait; app renders 1080 × 1920 even if the panel reports 1920 × 1080 landscape natively
-- [ ] Reported `densityDpi` and `WindowMetrics` — needed to pin the design-pixel scale (see §6)
-- [ ] Device Owner provisioning possible (`dpm set-device-owner`) — required for true kiosk lockdown
-- [ ] Screen never sleeps on AC power; auto-boots when power is restored
+- [ ] **Factory reset → Device Owner provisioning works** (`dpm set-device-owner` or Android Enterprise QR flow) — required for lock task, disabling the assistant, and silent OTA
+- [ ] Lock-task mode ignores the **voice remote** and BT input devices
+- [ ] Orientation locks to portrait; app renders 1080 × 1920; note reported `densityDpi` / `WindowMetrics` for the §6 density override
+- [ ] Touch is capacitive multi-touch and reports as a touchscreen (not a mouse pointer)
+- [ ] Screen stays awake on AC; behavior on power-restore (auto-boot or manual power button?) — if manual, the store runbook needs "press power" in the morning checklist
+- [ ] Battery + charging state readable via `BatteryManager` for the heartbeat
+- [ ] `adb` access for provisioning; **disabled again before the unit hits the floor**
 
 **If it fails the gate:** a commodity Samsung/Lenovo Android tablet in a floor stand runs the same app with zero code change, and is on the hardware Square actually recommends. Second fallback is the Terminal API path (§4.3a).
 
@@ -174,7 +190,9 @@ Square permits the Mobile Payments SDK **only in attended kiosks**. All three co
 
 An in-store Tea Hut kiosk meets all three, so this is a supported configuration. Worth stating plainly because it rules out a vestibule kiosk, a 24-hour lobby, or an outdoor window later without revisiting the payment path.
 
-**Also on the risk list — §2's hardware gate is now a hard gate.** Square states the SDK is **not compatible with rooted devices, custom ROMs, or OEM devices that violate its security rules**, and recommends running it on devices from major manufacturers (Google, Samsung). An off-brand "smart portable TV" is a genuine risk of failing exactly this test. We find that out in Phase 0, on real hardware, before anything else is built.
+**Device risk — largely retired, still verified.** Square states the SDK is **not compatible with rooted devices, custom ROMs, or OEM devices that violate its security rules**, and recommends major manufacturers. The confirmed ApoloSign is **EDLA-certified** (licensed genuine GMS — see §2.1), which removes the fake/missing-Play-Services failure mode that kills this class of device. It's still not a Google/Samsung name, so the §2.2 gate runs on the real unit before anything else is built — expected to pass, verified anyway.
+
+**Because the unit is on wheels with a battery**, the attended-kiosk conditions above are enforced physically: casters locked, cable-anchored beside the counter, wheeled to the back (or shuttered) at close. A kiosk that can roll is a kiosk that can leave staff line-of-sight.
 
 **Contingency if the TV fails the SDK check** (in order of preference): (a) swap the panel for a Samsung/Lenovo Android tablet in a floor stand — same app, no code change; (b) fall back to the Terminal API path with a Square Terminal at the kiosk; (c) QR pay-on-phone. The payment layer sits behind a single `PaymentProcessor` interface precisely so this stays a swap and not a rewrite.
 
@@ -220,6 +238,8 @@ CompositionLocalProvider(
 ```
 
 Everything below is then specified as exact numbers, and the same build still scales cleanly onto a tablet or a different panel later. Orientation is pinned `portrait` in the manifest; if the panel reports 1920 × 1080 landscape natively, we rotate at the app level and it renders 1080 × 1920 regardless.
+
+On the confirmed 24" panel this works out to ~92 ppi — every design px ≈ 0.28mm. The 96px minimum touch target is ≈26mm of physical glass, comfortably above the ~9mm usability floor, and the 36px body size is ≈10mm tall — legible at arm's length. A 24" portrait screen is more forgiving than the tablets Chowbus runs on; the risk flips from "too small to tap" to "sparse," so the grid and photography have to fill the space confidently.
 
 ### 6.2 Global layout grid (menu screen — the Chowbus signature)
 
@@ -355,14 +375,14 @@ Legend: **M** = MVP (launch) · **P1** = fast follow · **P2** = later
 ### 7.5 Platform / reliability
 | # | Feature | Pri |
 |---|---|---|
-| 43 | **Kiosk lockdown**: Device Owner + LockTask mode — no status bar, no home/recents, no other apps | M |
+| 43 | **Kiosk lockdown**: Device Owner + LockTask mode — no status bar, no home/recents, no other apps; **voice remote / BT input ignored, assistant disabled, camera unused** | M |
 | 44 | Auto-launch on boot, watchdog restart on crash, screen-always-on | M |
 | 45 | **Offline mode**: browse + build a cart from the local menu cache; queue unpaid orders; block card payment while offline with a clear message | M |
 | 46 | Idempotency everywhere (no double-charge, no duplicate order on retry) | M |
 | 47 | Crash/ANR reporting + remote logs (Sentry or self-hosted) | M |
-| 48 | OTA app updates (private Play channel or self-hosted APK + silent install as Device Owner) | P1 |
-| 49 | Health heartbeat + alert if a kiosk goes dark for >10 min during store hours | P1 |
-| 50 | Auto-recovery: nightly restart at 4am, cache re-sync at open | P1 |
+| 48 | OTA app updates via **managed Google Play** (EDLA device has real Play Store) or self-hosted APK + silent install as Device Owner | P1 |
+| 49 | Health heartbeat: online status **+ charging state — alert within minutes if the unit is running on battery** (5200mAh means an unplugged kiosk dies silently hours later), plus alert if dark >10 min during store hours | M |
+| 50 | Auto-recovery: nightly restart at 4am (also good Li-ion hygiene for a permanently-docked battery), cache re-sync at open | P1 |
 
 ---
 
@@ -419,7 +439,7 @@ audit_log(id, actor, action, target, meta_json, at)
 
 | Phase | Scope | Est. |
 |---|---|---|
-| **0. Validate — GATE** | **Run Square's Mobile Payments SDK sample app on the actual TV, authorize it, pair the Reader, take a $1 sandbox payment.** Then the rest of §2's checklist and a Compose app in lock-task mode. *Nothing else starts until this passes.* | 3–5 days |
+| **0. Validate — GATE** | **On the actual ApoloSign Gen2: run Square's Mobile Payments SDK sample app, authorize, pair the Reader, take a $1 sandbox payment; confirm Android 16 SDK support.** Then the rest of §2.2 — factory-reset → Device Owner, lock-task vs voice remote, portrait lock, battery telemetry. *Nothing else starts until this passes.* Order 1 unit + 1 Reader now; ~$350 answers every open hardware question. | 3–5 days |
 | **1. Backend core** | Auth + roles, Square OAuth + token refresh, **scoped token minting for devices**, locations, catalog sync, device registry | 1.5–2 wks |
 | **2. Kiosk MVP** | Attract → menu → customization → cart → checkout → **Reader payment via MPS** → confirmation; reader state handling; crash-safe idempotency; offline cache; kiosk lockdown | 3–4 wks |
 | **3. Ops** | Admin console (menu overrides, 86, kiosk settings, reader diagnostics), receipts, reporting | 1.5–2 wks |
@@ -432,16 +452,15 @@ audit_log(id, actor, action, target, meta_json, at)
 
 ## 12. Open questions for you
 
-1. **Which Reader model, and wired or Bluetooth?** — the current Square Reader (contactless + chip) can run wired to Android or over BLE. Wired is strongly preferred for a fixed kiosk. Does the TV expose a usable USB port, and is there a dock/mount in mind?
-2. **How many branches and how many kiosks per branch** at launch?
+1. ~~The exact TV model~~ — **answered: ApoloSign 24" Gen2** (§2.1). Remaining sub-question: does its USB port power a wired Square Reader, or do we run BLE + dock? Phase 0 settles it either way.
+2. **How many branches and how many kiosks per branch** at launch? (Order 1 ApoloSign + 1 Reader now for Phase 0 regardless.)
 3. **Receipts** — do you want a printer at the kiosk, or is an order number on-screen + SMS/email enough? (Skipping the printer removes a whole class of jams and paper-outs.)
 4. **Loyalty** — is Square Loyalty already running at Tea Hut, or is that new?
 5. **Tips at a kiosk** — on or off? (Boba kiosks are split; off is a smoother flow, on is real money.)
 6. **Languages** — is English + Chinese enough for v1, or is Spanish needed day one?
-7. **The exact TV model — now the highest-priority question.** With the Reader path chosen, whether the SDK runs on that firmware decides the whole build. Send me the make/model; better yet, that's the first thing Phase 0 tests on the real unit. Confirm too that **1920 is the tall dimension** (portrait), which is what §6 is designed against.
-8. **Menu photography** — do we have per-item photos already in Square, or does that need to happen? With no logo, the photos carry the entire screen, so this went from important to critical.
-9. **Accent color** — one color for price, the "+" button, and CHECKOUT. Pick one, or I'll choose a tea-toned default.
-10. **Is the kiosk always inside, in staff line of sight, and inaccessible after close?** Confirming §4.3a's three conditions, since the Reader path depends on them.
+7. **Menu photography** — do we have per-item photos already in Square, or does that need to happen? With no logo, the photos carry the entire screen, so this went from important to critical.
+8. **Accent color** — one color for price, the "+" button, and CHECKOUT. Pick one, or I'll choose a tea-toned default.
+9. **Is the kiosk always inside, in staff line of sight, and inaccessible after close?** Confirming §4.3a's three conditions — and since the unit is on wheels, "who wheels it where at close" belongs in the store runbook.
 
 ---
 
