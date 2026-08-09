@@ -1,8 +1,9 @@
 # Tea Hut Self-Order Kiosk — Product & Technical Plan
 
-**Status:** Draft v2 — for review, nothing built yet
+**Status:** Draft v3 — for review, nothing built yet
 **Target:** Android touchscreen ("incell" smart portable TV), in-store, Tea Hut branches only
-**Canvas:** **1080 × 1920 portrait**, locked orientation
+**Canvas:** **1080 × 1920 portrait**, locked orientation, no logo
+**Payment:** Square Reader on the kiosk (Mobile Payments SDK); staff Square Terminal at the counter receives orders
 **Stack:** Kotlin + Jetpack Compose (app) · TypeScript/Node + Postgres (backend) · TypeScript/React (admin)
 **Backend of record:** Square (catalog, orders, payments, locations, loyalty)
 **Reference UX:** Chowbus POS kiosk (primary visual target), MenuSifu kiosk (bubble-tea flow)
@@ -13,7 +14,7 @@
 
 | # | Decision | Recommendation | Why it matters |
 |---|---|---|---|
-| 1 | **How does the customer pay?** | Card, on **Square hardware** — confirmed. Primary path is the **Terminal API**: a Square Terminal mounted next to the TV takes the card and the TV never touches card data. | Square **prohibits** the Mobile Payments SDK (a Square Reader puck paired to our own Android app) in *unattended* kiosks and allows *attended* ones only under strict conditions; it also needs Google Play Services and a validated device that a generic portable TV will likely fail. Terminal API is plain HTTPS, so it works on any Android screen. See §4.3a for the Reader alternative. |
+| 1 | **How does the customer pay?** | **Square Reader attached to the kiosk**, driven by the **Mobile Payments SDK** inside our app — decided. The staff **Square Terminal** is a separate counter device for receiving and working orders, not part of the kiosk payment path. | This is a supported configuration *provided the kiosk stays attended* (inside the store, in staff line of sight, during business hours) — see §4.3a for the three conditions. It also means the SDK's device requirements become a **hard gate** on the TV in Phase 0, and a scoped Square token now lives on the device (§4.3 covers how that's contained). Payment sits behind a `PaymentProcessor` interface so a fallback stays a swap, not a rewrite. |
 | 2 | **What is a "user account"?** | Accounts are **Tea Hut staff/manager accounts in our own backend**, not Square logins. Square is connected **once per merchant** via OAuth; staff log in to pick which branch this kiosk serves. | Keeps the Square token server-side and long-lived; a kiosk never holds Square credentials. |
 | 3 | **How does the Square link stay "long term"?** | Square **OAuth authorization-code flow** (not PKCE). Refresh token is valid **until revoked**; access token expires every 30 days and is auto-refreshed by a backend job. | PKCE refresh tokens are single-use and die after 90 days — wrong choice for a permanent install. |
 
@@ -38,23 +39,32 @@
 ## 2. Hardware & environment
 
 **Kiosk unit (per station)**
-- Android touchscreen "portable TV", 21"–32", **1080 × 1920 portrait**, Android 9 (API 28)+ — *must be verified, see checklist*
-- Square Terminal (payment), mounted at reachable height
+- Android touchscreen "portable TV", 21"–32", **1080 × 1920 portrait**, Android 9 (API 28)+ — *must pass the gate below*
+- **Square Reader (contactless + chip)**, mounted at the kiosk at reachable height, **wired to the TV if the port allows** (preferred over Bluetooth LE: no pairing drift, no battery to die mid-shift). If BLE-only, use the charging dock and keep it permanently powered.
 - Optional: receipt printer (network ESC/POS, e.g. Epson TM-m30 LAN) — or skip printing, use SMS/email receipts + a number-call screen
 - Wi-Fi or Ethernet, PoE preferred; always-on power, surge protected
 
-**Hardware validation checklist (do this before writing app code — 1 day)**
+**At the counter (existing, not per-kiosk):** the staff **Square Terminal**, which receives kiosk orders the same way it receives counter orders.
+
+**Phase 0 hardware gate — do this on the real TV before any app code is written (1 day)**
+
+*Blocking — a failure here means changing the panel, not changing the plan:*
+- [ ] **Mobile Payments SDK runs and authorizes on this device.** Square does not support rooted devices, custom ROMs, or OEM devices that break its security rules, and recommends major manufacturers. Off-brand TV firmware is the real risk. Test with the SDK's sample app before anything else.
+- [ ] **Google Play Services present and current** — required by the SDK.
+- [ ] Android **API 28+**, not rooted, stock-enough ROM
+- [ ] **Square Reader connects** — wired if possible, else BLE pairs and holds a connection for a full day
+- [ ] Bluetooth (for BLE readers) and the required runtime permissions can be granted and stay granted
+
+*Non-blocking but shapes the build:*
 - [ ] Confirm it is real Android (not a Linux/RTOS "smart TV" shell) — `adb shell getprop ro.build.version.release`
 - [ ] `adb` over USB or network is enabled (needed for kiosk provisioning)
 - [ ] Touch is multi-touch capacitive, and reports as a touchscreen (not a mouse pointer)
 - [ ] Screen orientation can be locked to portrait; app renders 1080 × 1920 even if the panel reports 1920 × 1080 landscape natively
 - [ ] Reported `densityDpi` and `WindowMetrics` — needed to pin the design-pixel scale (see §6)
-- [ ] Google Play Services present? (not required on the Terminal API path — but needed for FCM push; if absent we fall back to polling)
 - [ ] Device Owner provisioning possible (`dpm set-device-owner`) — required for true kiosk lockdown
 - [ ] Screen never sleeps on AC power; auto-boots when power is restored
-- [ ] Webview version / Chrome version if we go hybrid
 
-**If it fails the checklist:** fall back to a commodity Android tablet (Lenovo Tab / Samsung Tab A) in a floor stand — same app, zero code change.
+**If it fails the gate:** a commodity Samsung/Lenovo Android tablet in a floor stand runs the same app with zero code change, and is on the hardware Square actually recommends. Second fallback is the Terminal API path (§4.3a).
 
 ---
 
@@ -64,20 +74,24 @@
 ┌──────────────────────────┐         ┌────────────────────────┐        ┌──────────────┐
 │  Kiosk App (Android)     │  HTTPS  │   Tea Hut Backend      │ HTTPS  │  Square APIs │
 │  Kotlin + Compose        │────────▶│   (our server)         │───────▶│  Catalog     │
-│                          │◀────────│                        │◀───────│  Orders      │
-│  • menu cache (local DB) │  device │  • staff accounts      │ OAuth  │  Terminal    │
-│  • cart / customization  │  JWT    │  • Square OAuth tokens │ tokens │  Payments    │
-│  • order submit          │         │  • catalog sync + cache│        │  Locations   │
-│  • Terminal payment poll │         │  • order orchestration │        │  Loyalty     │
-│  • offline queue         │         │  • device registry     │        │  Webhooks    │
+│  + Mobile Payments SDK   │◀────────│                        │◀───────│  Orders      │
+│                          │  device │  • staff accounts      │ OAuth  │  Payments    │
+│  • menu cache (local DB) │  JWT +  │  • Square OAuth tokens │ tokens │  Locations   │
+│  • cart / customization  │ scoped  │  • scoped token minting│        │  Loyalty     │
+│  • order submit          │ payment │  • catalog sync + cache│        │  Webhooks    │
+│  • SDK payment + reader  │  token  │  • order orchestration │        │              │
+│  • offline queue         │         │  • device registry     │        │              │
 └──────────────────────────┘         └────────────────────────┘        └──────────────┘
-          │                                     ▲
-          │ local network                       │ webhooks (payment updated,
-          ▼                                     │ catalog updated, device paired)
-   ┌──────────────┐   ┌──────────────┐          │
-   │ Square       │   │ Receipt      │          │
-   │ Terminal     │   │ printer      │          │
-   └──────────────┘   └──────────────┘          │
+     │              │                          ▲
+     │ USB / BLE    │ local net                │ webhooks (payment.updated,
+     ▼              ▼                          │ catalog.version.updated)
+┌──────────┐  ┌──────────┐                     │
+│ Square   │  │ Receipt  │                     │        ┌──────────────────────┐
+│ Reader   │  │ printer  │                     └────────│ Staff Square Terminal│
+│ (chip/   │  │ (opt.)   │                       orders │ at the counter —     │
+│  tap)    │  │          │                       land   │ receives & works     │
+└──────────┘  └──────────┘                       here   │ kiosk orders         │
+                                                        └──────────────────────┘
 ```
 
 **Why a backend and not direct kiosk → Square?**
@@ -110,7 +124,9 @@
 5. `ListLocations` pulls every Tea Hut branch → these become the selectable **branches**.
 6. Revocation/disconnect flow + alerting if refresh ever fails.
 
-**OAuth scopes needed:** `MERCHANT_PROFILE_READ`, `ITEMS_READ`, `INVENTORY_READ`, `ORDERS_READ`, `ORDERS_WRITE`, `PAYMENTS_READ`, `PAYMENTS_WRITE`, `CUSTOMERS_READ/WRITE` (loyalty), `LOYALTY_READ/WRITE`, `GIFTCARDS_READ`, `DEVICE_CREDENTIAL_MANAGEMENT` (Terminal pairing).
+7. **Always persist the `refresh_token` returned by each `ObtainToken` call** and alert on any refresh failure. Square documents code-flow refresh tokens as valid until revoked, but the safe implementation never assumes the old one survives.
+
+**OAuth scopes needed:** `MERCHANT_PROFILE_READ`, `ITEMS_READ`, `INVENTORY_READ`, `ORDERS_READ`, `ORDERS_WRITE`, `PAYMENTS_READ`, `PAYMENTS_WRITE`, **`PAYMENTS_WRITE_IN_PERSON`** (required by the Mobile Payments SDK), `CUSTOMERS_READ/WRITE` (loyalty), `LOYALTY_READ/WRITE`, `GIFTCARDS_READ`.
 
 ### 4.2 Menu (Catalog API)
 - Backend pulls the full catalog per location and caches it: categories → items → **variations** (sizes) → **modifier lists** (ice, sugar, toppings, milk swap) → images → taxes.
@@ -119,37 +135,53 @@
 - Fields Square can't express (kiosk-only hero images, sort order, "recommended" flags, translations, upsell rules) live in our DB, keyed by Square catalog ID — never a second source of truth for price.
 - Sold-out: Square inventory `NONE`/tracked-zero → grey out; plus a manual 86 toggle in the admin console that propagates in seconds.
 
-### 4.3 Order + payment flow (Terminal API path)
+### 4.3 Order + payment flow (Square Reader + Mobile Payments SDK) — **decided**
+
+Payment happens on a **Square Reader attached to the kiosk**, driven by the **Mobile Payments SDK inside our Android app**. The staff's Square Terminal is a separate device used at the counter to receive and work orders — it is not in the kiosk's payment path.
+
+**Authorizing the SDK (on every app start)**
+1. Kiosk authenticates to our backend with its device token.
+2. Backend calls `ObtainToken` with `grant_type=refresh_token` **and a narrowed `scopes` list** — `MERCHANT_PROFILE_READ`, `PAYMENTS_WRITE`, `PAYMENTS_WRITE_IN_PERSON` only — producing a payments-only access token for that device. The full-scope token never leaves the server.
+3. Backend returns `{access_token, location_id}` over TLS; kiosk stores it in the Android **Keystore / EncryptedSharedPreferences**, never in plain prefs or logs.
+4. Kiosk calls `AuthorizationManager.authorize(accessToken, locationId)`. On unpair, remote wipe, or branch change → `deauthorize()` and the backend revokes the token.
+5. Token is re-minted well before its 30-day expiry, and on any authorization error.
+
+> This is the one real cost of the Reader path: a Square access token now lives on a device in a public room. Narrow scope + Keystore + per-device revocation reduce that to "someone who physically opens the device could take payments for Tea Hut" — which is the same thing they could do by picking up the reader.
+
+**Reader pairing**
+- The SDK's `ReaderManager` handles pairing; `settingsManager.showSettings()` gives a prebuilt reader-management screen we expose behind the manager PIN.
+- Square Reader (contactless + chip) connects over **Bluetooth LE**, or **wired to Android** — prefer the wired/docked connection for a fixed kiosk: no pairing drift, no battery.
+- App monitors reader state continuously; a disconnected or low-battery reader raises a fleet alert *and* auto-hides card payment on the kiosk rather than failing a customer mid-checkout.
+
+**Taking a payment**
 1. Kiosk builds cart → `POST /orders` on our backend.
-2. Backend `CreateOrder` in Square (location = branch, source = "Tea Hut Kiosk", line items with variation + modifier IDs, taxes/discounts, `fulfillment` = PICKUP with the customer's name/number, `reference_id` = our order number). Idempotency key = our order UUID.
-3. Backend `CreateTerminalCheckout` → `device_id` of the paired Terminal, amount = order total, `DeviceCheckoutOptions` (tip screen on/off, skip receipt screen, `collect_signature: false`).
-4. Kiosk shows "Please pay on the card reader →" with a live countdown and a **Cancel** button (`CancelTerminalCheckout`).
-5. `terminal.checkout.updated` webhook (with polling as a belt-and-braces fallback) → on `COMPLETED`, backend pays the order (`PayOrder`) → order becomes a real, paid Square order → flows to KDS / kitchen printer / Square reporting automatically.
-6. Kiosk shows order number + prints/sends receipt, returns to the attract screen.
-7. Failure paths: declined → retry or choose another tender; timeout → auto-cancel and release; kiosk crash mid-payment → backend reconciles on reconnect using the checkout ID.
+2. Backend `CreateOrder` in Square (location = branch, source = "Tea Hut Kiosk", line items with variation + modifier IDs, taxes/discounts, `fulfillment` = PICKUP with the customer's name/number, `reference_id` = our order number). Idempotency key = our order UUID. Returns `order_id` + total.
+3. Kiosk shows its own tip screen (if enabled), then calls the SDK's `startPaymentActivity` with `PaymentParameters`: amount, `orderId`, `referenceId`, `tipMoney`, `autocomplete = true`, idempotency key = our order UUID.
+4. Reader prompts: **tap / insert / Apple Pay / Google Pay**. The SDK owns this UI; our app shows a matching full-screen "Tap or insert your card" state with a Cancel button.
+5. Success callback → payment is attached to the order → the order is paid and flows to the **staff Square Terminal**, KDS, kitchen printer, and Square reporting automatically.
+6. Kiosk shows the order number + receipt options, returns to attract.
+7. Failure paths: declined → retry or switch tender; canceled → back to cart with the cart intact; **app killed mid-payment** → on relaunch the kiosk asks the backend to reconcile by idempotency key before ever re-charging.
 
-**Terminal pairing:** admin console → `CreateDeviceCode` for the branch → 5-minute code entered on the Terminal → `device.code.paired` webhook returns the permanent `device_id`, which we bind to that kiosk record. Re-pair is a two-tap operation for staff.
+**Non-negotiable rule:** the idempotency key is the order UUID, generated once when the cart is submitted and reused on every retry. Double-charging a customer at an unattended screen is the worst failure this system can have.
 
-### 4.3a If "Square card reader" means the Reader puck, not the Terminal
+### 4.3a Operating conditions this choice commits Tea Hut to
 
-Both are "Square card readers" and the difference is not cosmetic:
+Square permits the Mobile Payments SDK **only in attended kiosks**. All three conditions must hold, and they are operational, not technical:
 
-| | **Square Terminal** (recommended) | **Square Reader** (contactless/chip puck) |
-|---|---|---|
-| Integration | Terminal API — plain HTTPS from our backend | Mobile Payments SDK — runs **inside** the Android app |
-| Device requirements on the TV | None. Any Android screen works. | Play Services, API 28+, and a device Square supports |
-| Kiosk usage | Permitted | **Attended kiosks only** — must be in a worker's line of sight, inaccessible outside business hours, staff trained to assist |
-| PCI scope | Lightest — card data never reaches our code | Still light, but the SDK lives in our app |
-| Hardware cost | ~$299/kiosk | ~$59/kiosk |
-| Risk | Second small screen at the station | Real chance the portable TV simply can't run the SDK |
+- [ ] The kiosk **cannot be physically reached by customers outside business hours** (inside the locked store, or shuttered).
+- [ ] It is **in the line of sight** of a staff member during business hours.
+- [ ] Staff are **trained to assist** customers with payment problems.
 
-A Tea Hut kiosk inside the store during business hours would likely qualify as *attended*, so the Reader is not off the table — but it hinges entirely on whether that specific TV passes Square's device requirements, which we can't know until §2's hardware validation runs. **Plan of record: build the payment layer behind one internal interface (`PaymentProcessor`) with the Terminal API as the first implementation.** If hardware validation clears the Reader, adding it is a contained piece of work, not a rewrite.
+An in-store Tea Hut kiosk meets all three, so this is a supported configuration. Worth stating plainly because it rules out a vestibule kiosk, a 24-hour lobby, or an outdoor window later without revisiting the payment path.
+
+**Also on the risk list — §2's hardware gate is now a hard gate.** Square states the SDK is **not compatible with rooted devices, custom ROMs, or OEM devices that violate its security rules**, and recommends running it on devices from major manufacturers (Google, Samsung). An off-brand "smart portable TV" is a genuine risk of failing exactly this test. We find that out in Phase 0, on real hardware, before anything else is built.
+
+**Contingency if the TV fails the SDK check** (in order of preference): (a) swap the panel for a Samsung/Lenovo Android tablet in a floor stand — same app, no code change; (b) fall back to the Terminal API path with a Square Terminal at the kiosk; (c) QR pay-on-phone. The payment layer sits behind a single `PaymentProcessor` interface precisely so this stays a swap and not a rewrite.
 
 ### 4.4 Alternate tenders (all optional toggles per branch)
-- **Cash / pay at counter** — order created as unpaid/OPEN, ticket prints, customer pays a cashier on Square POS. Good day-one fallback while the Terminal is being set up.
-- **QR pay on phone** — backend creates a Square payment link, kiosk shows a QR; customer pays on their own phone. Zero extra hardware; also the disaster fallback if a Terminal dies.
-- **Square gift card** — scan barcode on the Terminal or key in.
-- **Mobile Payments SDK + Square Reader on the TV itself** — *not recommended*: Square restricts this to **attended** kiosks (in line of sight of trained staff, inaccessible outside business hours) and requires Play Services + a supported device. Revisit only if hardware validation passes and you want a single-screen unit.
+- **Cash / pay at counter** — order created as unpaid/OPEN; it appears on the staff Square Terminal and the customer pays there. Also the graceful degradation whenever the reader is offline.
+- **QR pay on phone** — backend creates a Square payment link, kiosk shows a QR; customer pays on their own phone. Zero extra hardware, and the disaster fallback if a reader dies mid-shift.
+- **Square gift card** — keyed/scanned at checkout, or handed to staff at the counter.
 
 ---
 
@@ -159,17 +191,17 @@ A Tea Hut kiosk inside the store during business hours would likely qualify as *
 | Role | Can do |
 |---|---|
 | Owner | Connect/disconnect Square, create accounts, all branches |
-| Manager | Their branch: menu overrides, 86 items, kiosk settings, view orders, pair Terminal |
+| Manager | Their branch: menu overrides, 86 items, kiosk settings, view orders, pair/unpair the reader |
 | Staff | Unlock kiosk (exit to home / refund-free admin actions), start/stop kiosk mode |
 
 **Flow on a fresh kiosk**
 1. App launches → **Login** (email + password, or a short staff PIN after the first login on that device).
 2. **Select branch** — list of Square locations the account is allowed to serve.
-3. **Select/pair Terminal** for that branch.
-4. Device registers itself → backend issues a **device token** (long-lived, revocable, scoped to that one branch); the staff session ends. From then on the kiosk boots straight into the attract screen with no login — even after a power cut.
-5. Exiting kiosk mode requires a manager PIN + a hidden gesture (5-tap corner), matching how Chowbus/MenuSifu do it.
+3. **Pair the Square Reader** — the SDK's built-in reader settings screen; verify a $0.00 test connection.
+4. Device registers itself → backend issues a **device token** (long-lived, revocable, scoped to that one branch) and mints the first scoped payments token; the staff session ends. From then on the kiosk boots straight into the attract screen with no login — even after a power cut — re-authorizing the SDK silently on each start.
+5. Exiting kiosk mode requires a manager PIN + a hidden gesture (5-tap corner), matching how Chowbus/MenuSifu do it. Reader settings live behind the same PIN.
 
-Device registry in the admin console: name ("Tea Hut Flushing #2"), branch, Terminal ID, app version, last seen, battery/network, remote reboot + remote unpair.
+Device registry in the admin console: name ("Tea Hut Flushing #2"), branch, **reader serial / connection state / battery**, app version, last seen, network, remote reboot, remote deauthorize + token revoke.
 
 ---
 
@@ -193,7 +225,7 @@ Everything below is then specified as exact numbers, and the same build still sc
 
 ```
  0 ┌────────────────────────────────────────────┐  y=0
-   │  HEADER  160px                             │  logo · language pill · Here/To-Go · Start Over
+   │  HEADER  160px                             │  language pill · Here/To-Go · Start Over  (no logo)
 160├──────────┬─────────────────────────────────┤
    │          │                                 │
    │ CATEGORY │   ITEM GRID                     │  2 columns × 400px cards, 20px gutter
@@ -209,7 +241,7 @@ Everything below is then specified as exact numbers, and the same build still sc
 1920└────────────────────────────────────────────┘
 ```
 
-- **Header (160px):** Tea Hut logo left; language pill (EN / 中文) and Here/To-Go segmented control right; "Start Over" as a text button, deliberately low-contrast so it isn't tapped by accident.
+- **Header (160px):** **no logo** (per your call). The language pill (EN / 中文) sits left where the logo would go, Here/To-Go segmented control right, and "Start Over" as a low-contrast text button so it isn't tapped by accident. Dropping the logo actually buys back ~240px of horizontal room and lets the header shrink to 140px if we want more grid — worth a look on the real panel.
 - **Category rail (240px):** vertical, icon + label, sticky highlight pill on the active category, scroll-synced with the grid. This left-rail-plus-grid split *is* the Chowbus kiosk layout and is what makes a 40-item boba menu navigable without paging.
 - **Item grid:** two columns is the right density at 1080px — a third column drops cards under the 320px width where photos stop selling. Sticky category headers as you scroll.
 - **Cart bar (280px):** always visible, never collapses. Item count badge, running subtotal, and one unmissable CHECKOUT button. Empty state shows a muted "Your cart is empty" instead of hiding.
@@ -246,7 +278,7 @@ sticky footer   200px · qty stepper (−  2  +) · ADD TO CART · $6.75
 | Motion | 200ms for state, 250ms for sheets, ease-out; no motion longer than 300ms |
 | ADA reach band | all primary actions between y=900 and y=1500 so a seated user can reach them |
 | Contrast | 4.5:1 minimum on all text; high-contrast mode swaps the palette |
-| Palette | Tea Hut brand colors — **needs your logo/brand file**; placeholder warm-neutral + single accent until then |
+| Palette | No logo, so the UI is **photo-forward**: warm neutral background, near-black text, one accent color used only for price, the "+" button, and CHECKOUT. With no branding to carry the screen, the food photography and the accent do all the work — which raises the bar on photo quality, not lowers it. |
 
 ### 6.5 Assets
 - Item photos: 800 × 520 source, delivered as WebP, preloaded into the Coil disk cache during menu sync so the grid never shows a spinner.
@@ -284,9 +316,12 @@ Legend: **M** = MVP (launch) · **P1** = fast follow · **P2** = later
 |---|---|---|
 | 17 | Order review: line items with all modifiers spelled out, tax, total | M |
 | 18 | Promo code entry → Square discount | P1 |
-| 19 | **Tip prompt** (configurable %, on the Terminal or on-screen, skippable) | M |
-| 20 | Pay via **Square Terminal** — tap / chip / swipe / Apple Pay / Google Pay | M |
-| 21 | Cash / pay-at-counter fallback | M |
+| 19 | **Tip prompt** — on-screen, kiosk-owned, configurable %, skippable; passed to the SDK as `tipMoney` | M |
+| 20 | Pay via **Square Reader** (Mobile Payments SDK) — tap / chip / Apple Pay / Google Pay | M |
+| 20a | **Reader state handling**: connection + battery monitoring, "reconnecting" state, auto-disable card payment when the reader is down instead of failing a customer mid-checkout | M |
+| 20b | **Reader pairing & diagnostics screen** behind the manager PIN (SDK's built-in settings UI) | M |
+| 20c | **Crash-safe payments**: order-UUID idempotency key, reconcile-before-recharge on relaunch | M |
+| 21 | Cash / pay-at-counter fallback (order lands on the staff Square Terminal unpaid) | M |
 | 22 | QR pay-on-phone fallback | P1 |
 | 23 | Square **gift card** redemption | P1 |
 | 24 | **Loyalty**: phone-number enrollment + point accrual + reward redemption (Square Loyalty) | P1 |
@@ -298,7 +333,7 @@ Legend: **M** = MVP (launch) · **P1** = fast follow · **P2** = later
 ### 7.3 Kitchen & store operations
 | # | Feature | Pri |
 |---|---|---|
-| 29 | Orders land in Square as normal orders → **Square KDS / kitchen printer** with no extra work | M |
+| 29 | Orders land in Square as normal orders → **staff Square Terminal**, KDS, and kitchen printer with no extra work | M |
 | 30 | Direct ESC/POS ticket printing from the kiosk as a backup path | P1 |
 | 31 | Order source tagged "Kiosk #N" so reporting can split kiosk vs counter | M |
 | 32 | Daily kiosk sales summary in the admin console (count, AOV, top items, attach rate of toppings) | P1 |
@@ -310,7 +345,7 @@ Legend: **M** = MVP (launch) · **P1** = fast follow · **P2** = later
 | 34 | Staff accounts, roles, password reset, per-branch permissions | M |
 | 35 | Branch (Square location) mapping and selection | M |
 | 36 | Square connect / reconnect / health indicator with token-expiry alerting | M |
-| 37 | Kiosk registry: online status, app version, last order, remote reboot | M |
+| 37 | Kiosk registry: online status, app version, last order, **reader connection + battery**, remote reboot, remote deauthorize | M |
 | 38 | Menu overrides: hero images, sort order, translations, hide item, 86 toggle | M |
 | 39 | Per-kiosk settings: tip prompt, idle timeout, languages enabled, tenders enabled | M |
 | 40 | Attract-screen media upload (images/video) per branch | P1 |
@@ -370,9 +405,10 @@ audit_log(id, actor, action, target, meta_json, at)
 
 ## 10. Security & PCI
 
-- Card data never touches the kiosk or our backend — the Square Terminal is a validated P2PE device. Keeps us in the lightest possible PCI scope.
-- Square tokens: encrypted at rest, server-side only, rotated, revocable.
-- Kiosk holds only a revocable device token scoped to one branch.
+- **Card data is captured and encrypted by the Square Reader and handled entirely by the Mobile Payments SDK.** Our code never sees a PAN and never handles card entry UI. The app is still part of the payment flow, so it stays locked down, signed, and current on SDK versions.
+- Square tokens: the **full-scope token lives only on the server**, encrypted at rest, rotated, revocable.
+- The kiosk holds (a) a revocable device token scoped to one branch and (b) a **narrowed payments-only Square token** (`MERCHANT_PROFILE_READ`, `PAYMENTS_WRITE`, `PAYMENTS_WRITE_IN_PERSON`) in the Android Keystore, re-minted before expiry and revocable per device from the admin console. No catalog, customer, or reporting access from the device's token.
+- Physical security matters more on this path than on the Terminal path: the device is the payment terminal. Kiosk lockdown, no adb in the field, tamper-evident mounting, and one-tap remote deauthorize if a unit goes missing.
 - TLS + certificate pinning on the kiosk; no debug builds in the field.
 - Kiosk mode prevents customers from reaching settings, browser, or files.
 - No customer PII on the device beyond the current in-progress order; phone/email go straight to Square/our backend and are cleared on completion.
@@ -383,10 +419,10 @@ audit_log(id, actor, action, target, meta_json, at)
 
 | Phase | Scope | Est. |
 |---|---|---|
-| **0. Validate** | Hardware checklist, Square sandbox app, confirm Terminal API on a real Terminal, confirm the TV runs a Compose app in lock-task mode | 3–5 days |
-| **1. Backend core** | Auth + roles, Square OAuth + token refresh, locations, catalog sync, device registry | 1.5–2 wks |
-| **2. Kiosk MVP** | Attract → menu → customization → cart → checkout → Terminal payment → confirmation; offline cache; kiosk lockdown | 3–4 wks |
-| **3. Ops** | Admin console (menu overrides, 86, kiosk settings, Terminal pairing), receipts, reporting | 1.5–2 wks |
+| **0. Validate — GATE** | **Run Square's Mobile Payments SDK sample app on the actual TV, authorize it, pair the Reader, take a $1 sandbox payment.** Then the rest of §2's checklist and a Compose app in lock-task mode. *Nothing else starts until this passes.* | 3–5 days |
+| **1. Backend core** | Auth + roles, Square OAuth + token refresh, **scoped token minting for devices**, locations, catalog sync, device registry | 1.5–2 wks |
+| **2. Kiosk MVP** | Attract → menu → customization → cart → checkout → **Reader payment via MPS** → confirmation; reader state handling; crash-safe idempotency; offline cache; kiosk lockdown | 3–4 wks |
+| **3. Ops** | Admin console (menu overrides, 86, kiosk settings, reader diagnostics), receipts, reporting | 1.5–2 wks |
 | **4. Pilot** | One kiosk in one Tea Hut store, 2 weeks of live tuning, staff training, runbook | 2 wks |
 | **5. Fast-follow** | Loyalty, gift cards, upsell, combos, SMS-ready, QR pay, OTA | 2–3 wks |
 
@@ -396,15 +432,16 @@ audit_log(id, actor, action, target, meta_json, at)
 
 ## 12. Open questions for you
 
-1. **Which Square reader, exactly?** — a **Square Terminal** (handheld with its own screen, ~$299) or a **Square Reader** puck (~$59)? See §4.3a; it decides whether payment runs over HTTPS from the backend or inside the app, and the Reader path is contingent on the TV passing Square's device requirements. Also: does Tea Hut already own hardware, or is it being bought per kiosk?
+1. **Which Reader model, and wired or Bluetooth?** — the current Square Reader (contactless + chip) can run wired to Android or over BLE. Wired is strongly preferred for a fixed kiosk. Does the TV expose a usable USB port, and is there a dock/mount in mind?
 2. **How many branches and how many kiosks per branch** at launch?
 3. **Receipts** — do you want a printer at the kiosk, or is an order number on-screen + SMS/email enough? (Skipping the printer removes a whole class of jams and paper-outs.)
 4. **Loyalty** — is Square Loyalty already running at Tea Hut, or is that new?
 5. **Tips at a kiosk** — on or off? (Boba kiosks are split; off is a smoother flow, on is real money.)
 6. **Languages** — is English + Chinese enough for v1, or is Spanish needed day one?
-7. **The exact TV model** — send me the make/model and I'll verify it against the checklist in §2 before we commit to it. Confirm too that **1920 is the tall dimension** (portrait), which is what §6 is designed against.
-8. **Menu photography** — do we have per-item photos already in Square, or does that need to happen? (Kiosk conversion lives and dies on the photos.)
-9. **Tea Hut brand assets** — logo, brand colors, and any font. §6.4 has a placeholder palette until these land.
+7. **The exact TV model — now the highest-priority question.** With the Reader path chosen, whether the SDK runs on that firmware decides the whole build. Send me the make/model; better yet, that's the first thing Phase 0 tests on the real unit. Confirm too that **1920 is the tall dimension** (portrait), which is what §6 is designed against.
+8. **Menu photography** — do we have per-item photos already in Square, or does that need to happen? With no logo, the photos carry the entire screen, so this went from important to critical.
+9. **Accent color** — one color for price, the "+" button, and CHECKOUT. Pick one, or I'll choose a tea-toned default.
+10. **Is the kiosk always inside, in staff line of sight, and inaccessible after close?** Confirming §4.3a's three conditions, since the Reader path depends on them.
 
 ---
 
@@ -416,9 +453,11 @@ audit_log(id, actor, action, target, meta_json, at)
 ---
 
 ## Sources
-- [Square Mobile Payments SDK](https://developer.squareup.com/docs/mobile-payments-sdk) · [Build on Android](https://developer.squareup.com/docs/mobile-payments-sdk/android) — attended-kiosk restriction, API 28+
-- [Square Terminal API overview](https://developer.squareup.com/docs/terminal-api/overview) · [POS pairing](https://developer.squareup.com/docs/terminal-api/pos-integration) — device codes, `device_id`, `DEVICE_CREDENTIAL_MANAGEMENT`
-- [Square OAuth: refresh, revoke, limit scope](https://developer.squareup.com/docs/oauth-api/refresh-revoke-limit-scope) · [OAuth best practices](https://developer.squareup.com/docs/oauth-api/best-practices) — 30-day access tokens, code-flow refresh tokens valid until revoked
+- [Square Mobile Payments SDK](https://developer.squareup.com/docs/mobile-payments-sdk) · [Build on Android](https://developer.squareup.com/docs/mobile-payments-sdk/android) — attended-kiosk restriction, API 28+, no rooted/custom-ROM/non-compliant OEM devices, Bluetooth for contactless readers
+- [Authorize your Android application](https://developer.squareup.com/docs/mobile-payments-sdk/android/configure-authorize) — `authorize(accessToken, locationId)`, required `PAYMENTS_WRITE_IN_PERSON`
+- [Pair and manage card readers](https://developer.squareup.com/docs/mobile-payments-sdk/android/pair-manage-readers) — `ReaderManager`, `settingsManager.showSettings()`
+- [Square OAuth: refresh, revoke, limit scope](https://developer.squareup.com/docs/oauth-api/refresh-revoke-limit-scope) · [OAuth best practices](https://developer.squareup.com/docs/oauth-api/best-practices) — 30-day access tokens, code-flow refresh tokens valid until revoked, `scopes` narrowing on `ObtainToken`
+- [Square Terminal API overview](https://developer.squareup.com/docs/terminal-api/overview) — retained as the §4.3a fallback path
 - [Square Catalog API: modifiers](https://developer.squareup.com/docs/catalog-api/enable-modifiers-on-items) · [item options](https://developer.squareup.com/docs/catalog-api/item-options)
 - [Chowbus restaurant kiosk](https://www.chowbus.com/hardware/restaurant-kiosk) · [MenuSifu boba kiosk features](https://www.menusifu.com/blog/boba-shop-kiosk-system) · [MenuSifu kiosk hardware](https://www.menusifu.com/hardware/restaurant-kiosk) — reference feature set
 - [KioskBuddy ↔ Square Terminal](https://www.kioskbuddy.app/help/square-terminal) · [Sending kiosk orders to Square POS](https://www.kioskbuddy.app/help/square-orders) — proof the Terminal API path works in production
