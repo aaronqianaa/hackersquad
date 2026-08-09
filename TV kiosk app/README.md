@@ -10,7 +10,7 @@ Nothing is implemented yet — this folder currently holds the plan.
 ## Shape of the system (once built)
 
 ```
-kiosk-app/
+TV kiosk app/
 ├── PLAN.md
 ├── android/     # Kotlin + Jetpack Compose kiosk client
 ├── firebase/    # Cloud Functions (TS): Square OAuth + refresh, webhooks, orders; Firestore rules; FCM
