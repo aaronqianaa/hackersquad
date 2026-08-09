@@ -1,6 +1,6 @@
 # Tea Hut Self-Order Kiosk — Product & Technical Plan
 
-**Status:** Draft v4 — for review, nothing built yet
+**Status:** Draft v5 — decisions locked through §12; awaiting Phase 0 hardware
 **Target:** **ApoloSign 24" FHD Smart Portable TV Gen2** (Android 16, EDLA-certified, touch, rolling stand), in-store, Tea Hut branches only
 **Canvas:** **1080 × 1920 portrait**, locked orientation, no logo
 **Payment:** Square Reader on the kiosk (Mobile Payments SDK); staff Square Terminal at the counter receives orders
@@ -56,8 +56,10 @@ Also note: ApoloSign is still not a "large manufacturer" in Square's recommended
 **Per-station hardware**
 - ApoloSign 24" Gen2 (above), casters locked, cable-anchored, on AC at all times
 - **Square Reader (contactless + chip)**, mounted to the stand column at reachable height — **wired via the TV's USB port if it supplies stable power**, else BLE with the charging dock permanently powered
-- Optional: receipt printer (network ESC/POS, e.g. Epson TM-m30 LAN) — or skip printing, use SMS/email receipts + a number-call screen
+- **No receipt printer** (decided). Receipts are digital — the confirmation screen shows a QR of Square's receipt URL — and anyone who wants paper asks the cashier, who prints it from the staff Square Terminal at the counter.
 - Wi-Fi (device has no Ethernet); give it a reserved DHCP lease and the strongest AP in the room
+
+**Adding a kiosk later is a non-event by design:** buy another unit + Reader (~$350), provision (factory reset → Device Owner → install), staff logs in, picks the branch, pairs the Reader — ~15 minutes, zero backend changes. Kiosk count only affects the hardware budget and Wi-Fi capacity, never the software.
 
 **At the counter (existing, not per-kiosk):** the staff **Square Terminal**, which receives kiosk orders the same way it receives counter orders.
 
@@ -148,7 +150,8 @@ Also note: ApoloSign is still not a "large manufacturer" in Square's recommended
 - Backend pulls the full catalog per location and caches it: categories → items → **variations** (sizes) → **modifier lists** (ice, sugar, toppings, milk swap) → images → taxes.
 - Bubble-tea mapping: **size = item variation** (M/L), **ice / sugar / topping = modifier lists** with min/max selection rules. Toppings priced per modifier.
 - Incremental re-sync every 10 min + on `catalog.version.updated` webhook; kiosk pulls a diff on a version bump.
-- Fields Square can't express (kiosk-only hero images, sort order, "recommended" flags, translations, upsell rules) live in our DB, keyed by Square catalog ID — never a second source of truth for price.
+- **Item photos come from Square** (decided): each item's `CatalogImage` URLs are pulled during sync, resized/re-encoded to WebP by the backend, and cached on the kiosk. Card images center-crop to 400×260 (~1.54:1), so photos uploaded to Square should be ≥800px wide with the drink centered; items without a photo get the branded placeholder, never an empty box.
+- Fields Square can't express (sort order, "recommended" flags, upsell rules, per-item photo *override* if a Square photo crops badly) live in our DB, keyed by Square catalog ID — never a second source of truth for price.
 - Sold-out: Square inventory `NONE`/tracked-zero → grey out; plus a manual 86 toggle in the admin console that propagates in seconds.
 
 ### 4.3 Order + payment flow (Square Reader + Mobile Payments SDK) — **decided**
@@ -175,7 +178,7 @@ Payment happens on a **Square Reader attached to the kiosk**, driven by the **Mo
 3. Kiosk shows its own tip screen (if enabled), then calls the SDK's `startPaymentActivity` with `PaymentParameters`: amount, `orderId`, `referenceId`, `tipMoney`, `autocomplete = true`, idempotency key = our order UUID.
 4. Reader prompts: **tap / insert / Apple Pay / Google Pay**. The SDK owns this UI; our app shows a matching full-screen "Tap or insert your card" state with a Cancel button.
 5. Success callback → payment is attached to the order → the order is paid and flows to the **staff Square Terminal**, KDS, kitchen printer, and Square reporting automatically.
-6. Kiosk shows the order number + receipt options, returns to attract.
+6. Kiosk shows the order number + a **QR of the payment's `receipt_url`** (Square's hosted digital receipt — scan it, no hardware, no paper); paper on request from the cashier's Terminal. Returns to attract.
 7. Failure paths: declined → retry or switch tender; canceled → back to cart with the cart intact; **app killed mid-payment** → on relaunch the kiosk asks the backend to reconcile by idempotency key before ever re-charging.
 
 **Non-negotiable rule:** the idempotency key is the order UUID, generated once when the cart is submitted and reused on every retry. Double-charging a customer at an unattended screen is the worst failure this system can have.
@@ -196,7 +199,22 @@ An in-store Tea Hut kiosk meets all three, so this is a supported configuration.
 
 **Contingency if the TV fails the SDK check** (in order of preference): (a) swap the panel for a Samsung/Lenovo Android tablet in a floor stand — same app, no code change; (b) fall back to the Terminal API path with a Square Terminal at the kiosk; (c) QR pay-on-phone. The payment layer sits behind a single `PaymentProcessor` interface precisely so this stays a swap and not a rewrite.
 
-### 4.4 Alternate tenders (all optional toggles per branch)
+### 4.4 Square Loyalty integration — **MVP (decided)**
+
+All loyalty calls run on the backend with the full-scope token (`LOYALTY_READ/WRITE`, `CUSTOMERS_READ/WRITE`); the kiosk only ever sends a phone number and receives balances/rewards.
+
+**Checkout flow (optional, skippable in one tap):**
+1. After cart review: **"Earn rewards?"** screen — big numeric pad, phone number entry, prominent **Skip**.
+2. Backend `SearchLoyaltyAccounts` by phone →
+   - **Found:** show first name (if on file), point balance, and any redeemable rewards.
+   - **Not found:** one-tap enroll (`CreateLoyaltyAccount`) with the program's terms shown; declining continues as guest.
+3. **Redeem:** customer picks a reward → backend `CreateLoyaltyReward` against the order → Square applies the discount server-side → the new total is what the Reader charges. If payment is then canceled or fails terminally, backend `DeleteLoyaltyReward` releases the hold — a reward must never be burned without a payment.
+4. **Accrue:** after the payment completes, backend `AccumulateLoyaltyPoints` with the order ID (idempotent on our order UUID — points can't double-accrue on a retry).
+5. Confirmation screen shows **points earned + new balance** ("You have 240 ⭐ — 60 more for a free topping"), which is the whole reason kiosk loyalty converts.
+
+Program details (point name, earning rule, reward tiers) are read from `RetrieveLoyaltyProgram` at sync time and rendered as configured in Square — nothing hardcoded. If the merchant has no loyalty program active, the screens simply don't appear.
+
+### 4.5 Alternate tenders (all optional toggles per branch)
 - **Cash / pay at counter** — order created as unpaid/OPEN; it appears on the staff Square Terminal and the customer pays there. Also the graceful degradation whenever the reader is offline.
 - **QR pay on phone** — backend creates a Square payment link, kiosk shows a QR; customer pays on their own phone. Zero extra hardware, and the disaster fallback if a reader dies mid-shift.
 - **Square gift card** — keyed/scanned at checkout, or handed to staff at the counter.
@@ -245,7 +263,7 @@ On the confirmed 24" panel this works out to ~92 ppi — every design px ≈ 0.2
 
 ```
  0 ┌────────────────────────────────────────────┐  y=0
-   │  HEADER  160px                             │  language pill · Here/To-Go · Start Over  (no logo)
+   │  HEADER  160px                             │  Here/To-Go · Start Over  (no logo, English-only v1)
 160├──────────┬─────────────────────────────────┤
    │          │                                 │
    │ CATEGORY │   ITEM GRID                     │  2 columns × 400px cards, 20px gutter
@@ -261,7 +279,7 @@ On the confirmed 24" panel this works out to ~92 ppi — every design px ≈ 0.2
 1920└────────────────────────────────────────────┘
 ```
 
-- **Header (160px):** **no logo** (per your call). The language pill (EN / 中文) sits left where the logo would go, Here/To-Go segmented control right, and "Start Over" as a low-contrast text button so it isn't tapped by accident. Dropping the logo actually buys back ~240px of horizontal room and lets the header shrink to 140px if we want more grid — worth a look on the real panel.
+- **Header (160px):** **no logo** and **no language pill** (English-only v1) — the header carries just the Here/To-Go segmented control on the left and "Start Over" as a low-contrast text button on the right. That much emptiness buys the option of shrinking it to 140px for more grid — worth a look on the real panel. When 中文 flips on later, the language pill returns to the left slot.
 - **Category rail (240px):** vertical, icon + label, sticky highlight pill on the active category, scroll-synced with the grid. This left-rail-plus-grid split *is* the Chowbus kiosk layout and is what makes a 40-item boba menu navigable without paging.
 - **Item grid:** two columns is the right density at 1080px — a third column drops cards under the 320px width where photos stop selling. Sticky category headers as you scroll.
 - **Cart bar (280px):** always visible, never collapses. Item count badge, running subtotal, and one unmissable CHECKOUT button. Empty state shows a muted "Your cart is empty" instead of hiding.
@@ -298,10 +316,10 @@ sticky footer   200px · qty stepper (−  2  +) · ADD TO CART · $6.75
 | Motion | 200ms for state, 250ms for sheets, ease-out; no motion longer than 300ms |
 | ADA reach band | all primary actions between y=900 and y=1500 so a seated user can reach them |
 | Contrast | 4.5:1 minimum on all text; high-contrast mode swaps the palette |
-| Palette | No logo, so the UI is **photo-forward**: warm neutral background, near-black text, one accent color used only for price, the "+" button, and CHECKOUT. With no branding to carry the screen, the food photography and the accent do all the work — which raises the bar on photo quality, not lowers it. |
+| Palette | Photo-forward (no logo): warm neutral background, near-black text, and **accent = Apple blue `#007AFF`** (decided) — used *only* for price, the "+" button, CHECKOUT, and selected-chip fills. Usage rule: white text on `#007AFF` sits at ~4:1 contrast, which passes WCAG only for large text — so the accent always carries **large type** (≥36px) or icons, never fine print; small text on blue gets a darkened variant (`#0062CC`). |
 
 ### 6.5 Assets
-- Item photos: 800 × 520 source, delivered as WebP, preloaded into the Coil disk cache during menu sync so the grid never shows a spinner.
+- Item photos: **pulled from Square's catalog images** (decided) — backend fetches `CatalogImage` URLs at sync, re-encodes to WebP at 800×520, kiosk preloads them into the Coil disk cache during menu sync so the grid never shows a spinner. Photos uploaded to Square should be ≥800px wide, drink centered, since cards center-crop to ~1.54:1. Admin console flags items whose Square photo is missing or too small.
 - Attract loop: 1080 × 1920 H.264 video or a still image carousel, uploaded per branch from the admin console.
 - Every image has a branded placeholder — a menu item with no photo must never render an empty box.
 
@@ -315,7 +333,7 @@ Legend: **M** = MVP (launch) · **P1** = fast follow · **P2** = later
 | # | Feature | Pri |
 |---|---|---|
 | 1 | Attract / idle screen: looping video or promo images, "Tap to Order", auto-return after 45s idle | M |
-| 2 | Language picker — **English / 中文 / Español** (persisted per session, resets each order) | M |
+| 2 | **English-only v1** (decided). i18n scaffolding ships from day one with a hidden config toggle, so 中文/Español later is a translation file, not a rebuild | M |
 | 3 | Order type: **Here / To Go** (drives Square fulfillment + tax where applicable) | M |
 | 4 | Category rail + item grid, large photos, portrait layout, thumb-reachable | M |
 | 5 | Item detail: photo, description, calories/allergen note, size (variation) picker | M |
@@ -336,7 +354,7 @@ Legend: **M** = MVP (launch) · **P1** = fast follow · **P2** = later
 |---|---|---|
 | 17 | Order review: line items with all modifiers spelled out, tax, total | M |
 | 18 | Promo code entry → Square discount | P1 |
-| 19 | **Tip prompt** — on-screen, kiosk-owned, configurable %, skippable; passed to the SDK as `tipMoney` | M |
+| 19 | **Tip prompt** (decided): on-screen preset % buttons + a **No tip** button of equal visual weight — skippable in one tap, never guilt-boxed; passed to the SDK as `tipMoney` | M |
 | 20 | Pay via **Square Reader** (Mobile Payments SDK) — tap / chip / Apple Pay / Google Pay | M |
 | 20a | **Reader state handling**: connection + battery monitoring, "reconnecting" state, auto-disable card payment when the reader is down instead of failing a customer mid-checkout | M |
 | 20b | **Reader pairing & diagnostics screen** behind the manager PIN (SDK's built-in settings UI) | M |
@@ -344,9 +362,9 @@ Legend: **M** = MVP (launch) · **P1** = fast follow · **P2** = later
 | 21 | Cash / pay-at-counter fallback (order lands on the staff Square Terminal unpaid) | M |
 | 22 | QR pay-on-phone fallback | P1 |
 | 23 | Square **gift card** redemption | P1 |
-| 24 | **Loyalty**: phone-number enrollment + point accrual + reward redemption (Square Loyalty) | P1 |
-| 25 | Decline / timeout / cancel handling with clear recovery copy in all 3 languages | M |
-| 26 | Receipt options: print, email, SMS, or none | M |
+| 24 | **Square Loyalty** (decided — see §4.4): phone entry, one-tap enrollment, reward redemption before payment, accrual after, points on the confirmation screen | M |
+| 25 | Decline / timeout / cancel handling with clear recovery copy | M |
+| 26 | **Receipts** (decided): no kiosk printer — confirmation shows a **QR of Square's `receipt_url`**; paper on request from the cashier's staff Terminal | M |
 | 27 | Order-number confirmation screen + optional QR to track status | M |
 | 28 | Split payment / multiple tenders | P2 |
 
@@ -354,7 +372,7 @@ Legend: **M** = MVP (launch) · **P1** = fast follow · **P2** = later
 | # | Feature | Pri |
 |---|---|---|
 | 29 | Orders land in Square as normal orders → **staff Square Terminal**, KDS, and kitchen printer with no extra work | M |
-| 30 | Direct ESC/POS ticket printing from the kiosk as a backup path | P1 |
+| 30 | ~~Direct ESC/POS ticket printing from the kiosk~~ — dropped (no printer, decided) | — |
 | 31 | Order source tagged "Kiosk #N" so reporting can split kiosk vs counter | M |
 | 32 | Daily kiosk sales summary in the admin console (count, AOV, top items, attach rate of toppings) | P1 |
 | 33 | Customer-facing "now serving / ready" board (second screen or same TV when idle) | P2 |
@@ -389,21 +407,22 @@ Legend: **M** = MVP (launch) · **P1** = fast follow · **P2** = later
 ## 8. Screen flow
 
 ```
-Attract ──tap──▶ Language ──▶ Here/To Go ──▶ Menu ──tap item──▶ Item Detail
+Attract ──tap──▶ Here/To Go ──▶ Menu ──tap item──▶ Item Detail
                                                 │                    │
                                                 │                add to cart
                                                 ▼                    │
                                               Cart ◀─────────────────┘
                                                 │
-                                             Checkout (review, promo, loyalty, tip)
+                                    Review ──▶ Loyalty (phone / skip) ──▶ Tip (% / No tip)
                                                 │
                                        ┌────────┴────────┐
-                                   Card on Terminal   Cash / QR
+                                 Card on Square      Cash at counter
+                                 Reader (tap/chip)   (order → staff Terminal)
                                        └────────┬────────┘
                                                 ▼
-                                    Confirmation (order #, receipt) ──30s──▶ Attract
+                          Confirmation (order # · points earned · receipt QR) ──30s──▶ Attract
 ```
-Every screen: a persistent "Start Over" and a language toggle; every screen auto-returns to Attract after 60s of inactivity (with a 15s "Are you still there?" countdown that preserves the cart if tapped).
+Every screen: a persistent "Start Over"; every screen auto-returns to Attract after 60s of inactivity (with a 15s "Are you still there?" countdown that preserves the cart if tapped). A payment in progress never times out from under the customer.
 
 ---
 
@@ -450,17 +469,26 @@ audit_log(id, actor, action, target, meta_json, at)
 
 ---
 
-## 12. Open questions for you
+## 12. Decisions log & remaining questions
 
-1. ~~The exact TV model~~ — **answered: ApoloSign 24" Gen2** (§2.1). Remaining sub-question: does its USB port power a wired Square Reader, or do we run BLE + dock? Phase 0 settles it either way.
-2. **How many branches and how many kiosks per branch** at launch? (Order 1 ApoloSign + 1 Reader now for Phase 0 regardless.)
-3. **Receipts** — do you want a printer at the kiosk, or is an order number on-screen + SMS/email enough? (Skipping the printer removes a whole class of jams and paper-outs.)
-4. **Loyalty** — is Square Loyalty already running at Tea Hut, or is that new?
-5. **Tips at a kiosk** — on or off? (Boba kiosks are split; off is a smoother flow, on is real money.)
-6. **Languages** — is English + Chinese enough for v1, or is Spanish needed day one?
-7. **Menu photography** — do we have per-item photos already in Square, or does that need to happen? With no logo, the photos carry the entire screen, so this went from important to critical.
-8. **Accent color** — one color for price, the "+" button, and CHECKOUT. Pick one, or I'll choose a tea-toned default.
-9. **Is the kiosk always inside, in staff line of sight, and inaccessible after close?** Confirming §4.3a's three conditions — and since the unit is on wheels, "who wheels it where at close" belongs in the store runbook.
+**Decided (v5):**
+| Question | Decision |
+|---|---|
+| Device | ApoloSign 24" Gen2 (§2.1) |
+| Kiosk count | Doesn't gate anything — kiosks scale horizontally, adding one is ~15 min + hardware (§2.1) |
+| Receipts | No kiosk printer. QR to Square's digital receipt on-screen; paper on request from the cashier's staff Terminal |
+| Tips | On — preset % + equal-weight **No tip** button, one-tap skippable |
+| Loyalty | Square Loyalty in MVP (§4.4) |
+| Languages | English-only v1; i18n scaffold retained |
+| Menu photos | Pulled from Square catalog images (§4.2) |
+| Accent color | Apple blue `#007AFF` (§6.4) |
+| Logo | None |
+
+**Still open:**
+1. **Wired or BLE Reader** — does the ApoloSign's USB port power a wired Reader? Phase 0 settles it; BLE + powered dock is the fallback.
+2. **Confirm §4.3a's attended conditions** — always inside, staff line of sight, inaccessible after close; "who wheels it where at close" goes in the store runbook.
+3. **Verify at pilot:** cashier can pull up a kiosk payment on the staff Terminal and print its receipt (transaction history at the same location — expected to work, confirm on real hardware).
+4. **Is Square Loyalty already configured** in the Tea Hut account (earning rule + reward tiers)? The kiosk renders whatever the program defines; if it's not set up yet, that's a 30-minute Square Dashboard task before pilot.
 
 ---
 
