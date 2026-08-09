@@ -103,12 +103,14 @@ Also note: ApoloSign is still not a "large manufacturer" in Square's recommended
      │              │                          ▲
      │ USB / BLE    │ local net                │ webhooks (payment.updated,
      ▼              ▼                          │ catalog.version.updated)
-┌──────────┐  ┌──────────┐                     │
-│ Square   │  │ Receipt  │                     │        ┌──────────────────────┐
-│ Reader   │  │ printer  │                     └────────│ Staff Square Terminal│
-│ (chip/   │  │ (opt.)   │                       orders │ at the counter —     │
-│  tap)    │  │          │                       land   │ receives & works     │
-└──────────┘  └──────────┘                       here   │ kiosk orders         │
+┌──────────┐                                   │
+│ Square   │   ┌────────────────────┐          │        ┌──────────────────────┐
+│ Reader   │   │ Manager App (iOS)  │  HTTPS   │        │ Staff Square Terminal│
+│ (chip/   │   │ Swift + SwiftUI    │──────────┤        │ at the counter —     │
+│  tap)    │   │ fleet · 86 · sales │◀─ APNs   └────────│ receives & works     │
+└──────────┘   │ alerts · settings  │   push      orders│ kiosk orders,        │
+               └────────────────────┘             land  │ prints receipts      │
+                                                  here  │ on request           │
                                                         └──────────────────────┘
 ```
 
@@ -125,8 +127,9 @@ Also note: ApoloSign is still not a "large manufacturer" in Square's recommended
 |---|---|---|
 | **Kiosk app** | **Kotlin + Jetpack Compose** (single-activity, MVVM, Room for the menu cache, WorkManager for the offline queue) | Native gets us the Chowbus feel — big photo cards, sliding modifier sheets, animated cart badge, 60fps scroll — without fighting a WebView's touch and scroll behavior. It also puts the kiosk-critical APIs (Device Owner / lock-task, boot receiver, ESC/POS printing, watchdog) directly in reach instead of behind a bridge. Fewer moving parts on a device that runs 14 hours a day unattended. |
 | **Backend** | **TypeScript on Node (Fastify)** + **Postgres** + Redis | Square's TypeScript SDK is the best-maintained of the official set, and the types are shared with the admin console. (Python/FastAPI is an equally fine choice if you have a Python-shop preference — Square ships an SDK for it too.) |
-| **Admin console** | **TypeScript + React** | Shares API types with the backend; nothing exotic needed. |
-| **Display languages** | English + 中文 at launch, Español behind a config toggle | Matches the Chowbus/MenuSifu multilingual kiosk pattern. |
+| **Manager app** | **Swift + SwiftUI (iOS)** — decided | The manager's daily surface is their phone: fleet dashboard, alerts, 86 toggles, sales. Single platform → native SwiftUI, no cross-platform tax; **APNs push** is the payoff — a kiosk running on battery or a dropped reader pings the manager's pocket in seconds. Same backend API as everything else. |
+| **Owner web console** | **TypeScript + React** — minimal | The handful of rare, desk-shaped jobs that don't belong on a phone: the one-time Square OAuth connect (browser redirect), staff accounts/roles, branch mapping, bulk menu overrides, attract-media upload. Shares API types with the backend. |
+| **Display languages** | English-only v1; i18n scaffold retained (§12) | Kiosk pattern per Chowbus/MenuSifu; 中文 later is a translation file. |
 
 **Rejected alternatives:** React Native / Flutter (would need native bridges for exactly the parts that matter most — kiosk lockdown, printing, boot behavior — while adding a runtime; reconsider only if an iPad version becomes a requirement) and a WebView/PWA shell (touch latency, scroll jank on cheap Android SoCs, and no clean path to lock-task mode).
 
@@ -226,9 +229,9 @@ Program details (point name, earning rule, reward tiers) are read from `Retrieve
 **Roles**
 | Role | Can do |
 |---|---|
-| Owner | Connect/disconnect Square, create accounts, all branches |
-| Manager | Their branch: menu overrides, 86 items, kiosk settings, view orders, pair/unpair the reader |
-| Staff | Unlock kiosk (exit to home / refund-free admin actions), start/stop kiosk mode |
+| Owner | **Web console:** connect/disconnect Square, create accounts, branch mapping — all branches. Can also use the manager iOS app. |
+| Manager | **iOS app (their daily surface):** fleet dashboard + push alerts, 86 items, menu overrides, kiosk settings, sales, remote reboot/deauthorize — their branch. Sets the kiosk-unlock PIN. |
+| Staff | **On the kiosk itself:** unlock (manager PIN + hidden gesture), start/stop kiosk mode, assist customers. No app of their own. |
 
 **Flow on a fresh kiosk**
 1. App launches → **Login** (email + password, or a short staff PIN after the first login on that device).
@@ -237,7 +240,7 @@ Program details (point name, earning rule, reward tiers) are read from `Retrieve
 4. Device registers itself → backend issues a **device token** (long-lived, revocable, scoped to that one branch) and mints the first scoped payments token; the staff session ends. From then on the kiosk boots straight into the attract screen with no login — even after a power cut — re-authorizing the SDK silently on each start.
 5. Exiting kiosk mode requires a manager PIN + a hidden gesture (5-tap corner), matching how Chowbus/MenuSifu do it. Reader settings live behind the same PIN.
 
-Device registry in the admin console: name ("Tea Hut Flushing #2"), branch, **reader serial / connection state / battery**, app version, last seen, network, remote reboot, remote deauthorize + token revoke.
+The device registry lives in the backend and renders in the **manager iOS app**: name ("Tea Hut Flushing #2"), branch, **reader serial / connection state / battery**, app version, last seen, network, **device charging state**, remote reboot, remote deauthorize + token revoke. Anything red pushes an APNs alert to the branch's managers.
 
 ---
 
@@ -378,17 +381,22 @@ Legend: **M** = MVP (launch) · **P1** = fast follow · **P2** = later
 | 33 | Customer-facing "now serving / ready" board (second screen or same TV when idle) | P2 |
 
 ### 7.4 Admin & fleet management
-| # | Feature | Pri |
-|---|---|---|
-| 34 | Staff accounts, roles, password reset, per-branch permissions | M |
-| 35 | Branch (Square location) mapping and selection | M |
-| 36 | Square connect / reconnect / health indicator with token-expiry alerting | M |
-| 37 | Kiosk registry: online status, app version, last order, **reader connection + battery**, remote reboot, remote deauthorize | M |
-| 38 | Menu overrides: hero images, sort order, translations, hide item, 86 toggle | M |
-| 39 | Per-kiosk settings: tip prompt, idle timeout, languages enabled, tenders enabled | M |
-| 40 | Attract-screen media upload (images/video) per branch | P1 |
-| 41 | Remote config push without an app update | P1 |
-| 42 | Audit log (who changed what, who exited kiosk mode) | P1 |
+Two surfaces (decided): **[iOS]** = manager app (Swift/SwiftUI), **[web]** = minimal owner console.
+
+| # | Feature | Surface | Pri |
+|---|---|---|---|
+| 34 | Staff accounts, roles, password reset, per-branch permissions | web | M |
+| 35 | Branch (Square location) mapping and selection | web | M |
+| 36 | Square connect / reconnect / health indicator with token-expiry alerting | web (+ status in iOS) | M |
+| 37 | Kiosk fleet dashboard: online status, app version, last order, **reader connection + battery, device charging state**, remote reboot, remote deauthorize | iOS | M |
+| 37a | **Push alerts (APNs)**: kiosk offline, running on battery, reader disconnected, Square token refresh failure | iOS | M |
+| 38 | 86 / sold-out toggle (propagates to kiosks in seconds) | iOS | M |
+| 38a | Menu overrides: sort order, hide item, photo override | iOS + web | M |
+| 39 | Per-kiosk settings: tip %, idle timeout, tenders enabled | iOS | M |
+| 39a | Daily sales at a glance: kiosk count, AOV, top items | iOS | P1 |
+| 40 | Attract-screen media upload (images/video) per branch | web | P1 |
+| 41 | Remote config push without an app update | backend | P1 |
+| 42 | Audit log (who changed what, who exited kiosk mode) | web | P1 |
 
 ### 7.5 Platform / reliability
 | # | Feature | Pri |
@@ -461,11 +469,11 @@ audit_log(id, actor, action, target, meta_json, at)
 | **0. Validate — GATE** | **On the actual ApoloSign Gen2: run Square's Mobile Payments SDK sample app, authorize, pair the Reader, take a $1 sandbox payment; confirm Android 16 SDK support.** Then the rest of §2.2 — factory-reset → Device Owner, lock-task vs voice remote, portrait lock, battery telemetry. *Nothing else starts until this passes.* Order 1 unit + 1 Reader now; ~$350 answers every open hardware question. | 3–5 days |
 | **1. Backend core** | Auth + roles, Square OAuth + token refresh, **scoped token minting for devices**, locations, catalog sync, device registry | 1.5–2 wks |
 | **2. Kiosk MVP** | Attract → menu → customization → cart → checkout → **Reader payment via MPS** → confirmation; reader state handling; crash-safe idempotency; offline cache; kiosk lockdown | 3–4 wks |
-| **3. Ops** | Admin console (menu overrides, 86, kiosk settings, reader diagnostics), receipts, reporting | 1.5–2 wks |
+| **3. Ops** | **Manager iOS app** (fleet dashboard, APNs alerts, 86 toggle, kiosk settings, sales glance) + minimal owner web console (Square connect, accounts, branches) | 2–2.5 wks |
 | **4. Pilot** | One kiosk in one Tea Hut store, 2 weeks of live tuning, staff training, runbook | 2 wks |
 | **5. Fast-follow** | Loyalty, gift cards, upsell, combos, SMS-ready, QR pay, OTA | 2–3 wks |
 
-**Rough total to a live pilot: ~8–10 weeks of one full-time developer.** MVP-only (phases 0–2 + minimal admin) can be live in ~6 weeks if we accept manual menu setup.
+**Rough total to a live pilot: ~9–11 weeks of one full-time developer.** The iOS manager app adds real scope but runs against the same backend API as everything else, and can be built in parallel with Phase 2 if a second developer exists. A pilot *can* start before the iOS app ships (the web console covers setup; alerts fall back to email) — but day-to-day ops without it means a manager walking to a laptop, so it's in the main build, not fast-follow.
 
 ---
 
@@ -483,6 +491,7 @@ audit_log(id, actor, action, target, meta_json, at)
 | Menu photos | Pulled from Square catalog images (§4.2) |
 | Accent color | Apple blue `#007AFF` (§6.4) |
 | Logo | None |
+| Manager surface | **Separate iOS app** (Swift/SwiftUI) with APNs push alerts; minimal web console retained for owner setup (§3, §7.4) |
 
 **Still open:**
 1. **Wired or BLE Reader** — does the ApoloSign's USB port power a wired Reader? Phase 0 settles it; BLE + powered dock is the fallback.

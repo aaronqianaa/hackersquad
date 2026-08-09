@@ -13,8 +13,9 @@ Nothing is implemented yet — this folder currently holds the plan.
 kiosk-app/
 ├── PLAN.md
 ├── android/     # Kotlin + Jetpack Compose kiosk client
-├── backend/     # API: staff auth, Square OAuth + token refresh, catalog sync, order orchestration
-└── admin/       # Web console: branches, kiosks, menu overrides, Terminal pairing
+├── backend/     # API: staff auth, Square OAuth + token refresh, catalog sync, order orchestration, APNs
+├── ios-manager/ # Swift + SwiftUI manager app: fleet dashboard, push alerts, 86 toggle, settings
+└── admin/       # Minimal owner web console: Square connect, staff accounts, branch mapping
 ```
 
 ## Status
@@ -26,6 +27,7 @@ kiosk-app/
 | Canvas | 1080 × 1920 portrait, locked, no logo, English-only v1, accent #007AFF |
 | App language | Kotlin + Jetpack Compose |
 | Backend language | TypeScript (Node/Fastify) + Postgres |
+| Manager app | iOS — Swift + SwiftUI, APNs push alerts |
 | Payment | Square Reader on the kiosk via Mobile Payments SDK (PLAN.md §4.3) |
 | Staff | Square Terminal at the counter receives kiosk orders + prints receipts on request |
 | Loyalty | Square Loyalty in MVP (PLAN.md §4.4) |
