@@ -22,7 +22,7 @@ kiosk-app/
 
 | | |
 |---|---|
-| Plan | Draft v7 — decisions locked (see PLAN.md §12 log) |
+| Plan | v8 — decision-complete (PLAN.md §12); Phase 0 hardware gate is the only pre-build step |
 | Device | ApoloSign 24" FHD Smart Portable TV Gen2 — Android 16, EDLA-certified, touch, rolling stand |
 | Canvas | 1080 × 1920 portrait, locked, no logo, English-only v1, accent #007AFF |
 | App language | Kotlin + Jetpack Compose |
@@ -33,4 +33,4 @@ kiosk-app/
 | Loyalty | Square Loyalty in MVP (PLAN.md §4.4) |
 | Availability | Real-time — Square sold-out → kiosks in ~1–2s (PLAN.md §4.2a) |
 | Square connection | Not yet authorized |
-| Hardware | Device confirmed; **Phase 0 SDK gate on the real unit still blocks build start** (PLAN.md §2.2) |
+| Hardware | ApoloSign + Square Reader in hand; wired USB power confirmed; **Phase 0 SDK gate can run today** (PLAN.md §2.2) |
