@@ -1,11 +1,11 @@
 # Tea Hut Self-Order Kiosk — Product & Technical Plan
 
-**Status:** Draft v5 — decisions locked through §12; awaiting Phase 0 hardware
+**Status:** Draft v6 — decisions locked through §12; awaiting Phase 0 hardware
 **Target:** **ApoloSign 24" FHD Smart Portable TV Gen2** (Android 16, EDLA-certified, touch, rolling stand), in-store, Tea Hut branches only
 **Canvas:** **1080 × 1920 portrait**, locked orientation, no logo
 **Payment:** Square Reader on the kiosk (Mobile Payments SDK); staff Square Terminal at the counter receives orders
-**Stack:** Kotlin + Jetpack Compose (app) · TypeScript/Node + Postgres (backend) · TypeScript/React (admin)
-**Backend of record:** Square (catalog, orders, payments, locations, loyalty)
+**Stack:** Kotlin + Jetpack Compose (kiosk) · **Firebase** — Cloud Functions/TS + Firestore + Auth + FCM (backend) · Swift + SwiftUI (manager iOS) · TypeScript/React (owner web)
+**Backend of record:** Square (catalog, orders, payments, locations, loyalty) — Firebase caches and orchestrates, never owns prices
 **Reference UX:** Chowbus POS kiosk (primary visual target), MenuSifu kiosk (bubble-tea flow)
 
 ---
@@ -90,43 +90,46 @@ Also note: ApoloSign is still not a "large manufacturer" in Square's recommended
 
 ```
 ┌──────────────────────────┐         ┌────────────────────────┐        ┌──────────────┐
-│  Kiosk App (Android)     │  HTTPS  │   Tea Hut Backend      │ HTTPS  │  Square APIs │
-│  Kotlin + Compose        │────────▶│   (our server)         │───────▶│  Catalog     │
-│  + Mobile Payments SDK   │◀────────│                        │◀───────│  Orders      │
-│                          │  device │  • staff accounts      │ OAuth  │  Payments    │
-│  • menu cache (local DB) │  JWT +  │  • Square OAuth tokens │ tokens │  Locations   │
-│  • cart / customization  │ scoped  │  • scoped token minting│        │  Loyalty     │
-│  • order submit          │ payment │  • catalog sync + cache│        │  Webhooks    │
-│  • SDK payment + reader  │  token  │  • order orchestration │        │              │
-│  • offline queue         │         │  • device registry     │        │              │
+│  Kiosk App (Android)     │  HTTPS  │  Firebase (backend)    │ HTTPS  │  Square APIs │
+│  Kotlin + Compose        │────────▶│                        │───────▶│  Catalog     │
+│  + Mobile Payments SDK   │◀────────│  Cloud Functions (TS): │◀───────│  Orders      │
+│                          │Firestore│   Square OAuth+refresh │ OAuth  │  Payments    │
+│  • menu cache (local DB) │listeners│   scoped token minting │ tokens │  Locations   │
+│  • cart / customization  │(live    │   order orchestration  │        │  Loyalty     │
+│  • order submit          │ menu +  │   webhook handlers     │        │  Webhooks    │
+│  • SDK payment + reader  │ avail-  │  Firestore: menu cache,│        │              │
+│  • offline queue         │ ability)│   availability, fleet  │        │              │
+│                          │         │  Auth · FCM · Storage  │        │              │
+│                          │         │  Remote Config · Rules │        │              │
 └──────────────────────────┘         └────────────────────────┘        └──────────────┘
      │              │                          ▲
-     │ USB / BLE    │ local net                │ webhooks (payment.updated,
-     ▼              ▼                          │ catalog.version.updated)
+     │ USB / BLE    │ local net                │ webhooks → HTTPS functions
+     ▼              ▼                          │ (payment.updated, catalog.version.updated)
 ┌──────────┐                                   │
 │ Square   │   ┌────────────────────┐          │        ┌──────────────────────┐
 │ Reader   │   │ Manager App (iOS)  │  HTTPS   │        │ Staff Square Terminal│
 │ (chip/   │   │ Swift + SwiftUI    │──────────┤        │ at the counter —     │
-│  tap)    │   │ fleet · 86 · sales │◀─ APNs   └────────│ receives & works     │
-└──────────┘   │ alerts · settings  │   push      orders│ kiosk orders,        │
+│  tap)    │   │ fleet · 86 · sales │◀─ FCM/   └────────│ receives & works     │
+└──────────┘   │ alerts · settings  │  APNs push  orders│ kiosk orders,        │
                └────────────────────┘             land  │ prints receipts      │
                                                   here  │ on request           │
                                                         └──────────────────────┘
 ```
 
 **Why a backend and not direct kiosk → Square?**
-- Square OAuth tokens must never live on a device in a public space.
+- Square OAuth tokens must never live on a device in a public space (the kiosk gets only the scoped payments token, §4.3).
 - Menu/catalog is fetched once per branch and served to all kiosks — fast, cheap, consistent.
 - One place to hold order state when a kiosk crashes mid-payment.
-- Remote config, remote kill-switch, remote menu overrides (86'd items), OTA update pointers.
-- Cheap to host: single small VM or a container ($10–20/mo), Postgres, one cron worker.
+- Remote config, remote kill-switch, remote 86, OTA update pointers.
+- **Real-time fan-out**: one Square webhook → one Firestore write → every kiosk and manager phone updates in under a second (§4.2a).
+- On Firebase (Blaze pay-as-you-go) this is serverless: no VM to patch, and at tea-shop volume the bill is roughly $0–20/mo.
 
 ### Languages & stack (decided)
 
 | Layer | Language / framework | Why |
 |---|---|---|
 | **Kiosk app** | **Kotlin + Jetpack Compose** (single-activity, MVVM, Room for the menu cache, WorkManager for the offline queue) | Native gets us the Chowbus feel — big photo cards, sliding modifier sheets, animated cart badge, 60fps scroll — without fighting a WebView's touch and scroll behavior. It also puts the kiosk-critical APIs (Device Owner / lock-task, boot receiver, ESC/POS printing, watchdog) directly in reach instead of behind a bridge. Fewer moving parts on a device that runs 14 hours a day unattended. |
-| **Backend** | **TypeScript on Node (Fastify)** + **Postgres** + Redis | Square's TypeScript SDK is the best-maintained of the official set, and the types are shared with the admin console. (Python/FastAPI is an equally fine choice if you have a Python-shop preference — Square ships an SDK for it too.) |
+| **Backend** | **Firebase** (decided): **Cloud Functions in TypeScript** (Square OAuth + scheduled refresh, webhook handlers, order orchestration, scoped-token minting) · **Firestore** (menu cache, live availability, device registry, orders, audit) · **Firebase Auth** (staff/manager/owner accounts + kiosk device identity) · **FCM** (push — wraps APNs, one pipeline for Android kiosks *and* the iOS manager app) · **Cloud Storage** (WebP images, attract media) · **Remote Config** (per-kiosk settings without an app update) · **Crashlytics** (kiosk + iOS crash reporting) · Secret Manager (Square tokens) | One directive covers it: kiosk backend = Firebase. It fits unusually well — Firestore's real-time listeners are exactly the mechanism §4.2a's live availability needs, Functions still speak TypeScript with Square's best SDK, and there's no server to babysit for a bubble-tea shop. |
 | **Manager app** | **Swift + SwiftUI (iOS)** — decided | The manager's daily surface is their phone: fleet dashboard, alerts, 86 toggles, sales. Single platform → native SwiftUI, no cross-platform tax; **APNs push** is the payoff — a kiosk running on battery or a dropped reader pings the manager's pocket in seconds. Same backend API as everything else. |
 | **Owner web console** | **TypeScript + React** — minimal | The handful of rare, desk-shaped jobs that don't belong on a phone: the one-time Square OAuth connect (browser redirect), staff accounts/roles, branch mapping, bulk menu overrides, attract-media upload. Shares API types with the backend. |
 | **Display languages** | English-only v1; i18n scaffold retained (§12) | Kiosk pattern per Chowbus/MenuSifu; 中文 later is a translation file. |
@@ -140,8 +143,8 @@ Also note: ApoloSign is still not a "large manufacturer" in Square's recommended
 ### 4.1 Connecting the Square account (one-time, long-term)
 1. Tea Hut owner opens the admin console → **Connect Square** → Square OAuth consent (authorization-code flow).
 2. Backend exchanges `code` → `access_token` (30-day) + `refresh_token` (**valid until revoked**).
-3. Tokens stored **encrypted at rest** (KMS or libsodium sealed box), never returned to a client.
-4. A cron job refreshes the access token every **7 days** (and on any `401`), so an expiry can never take a store offline.
+3. Tokens stored in **Google Secret Manager** (never in Firestore, never returned to a client); Functions read them at call time.
+4. A **scheduled Cloud Function** refreshes the access token every **7 days** (and on any `401`), so an expiry can never take a store offline.
 5. `ListLocations` pulls every Tea Hut branch → these become the selectable **branches**.
 6. Revocation/disconnect flow + alerting if refresh ever fails.
 
@@ -152,17 +155,40 @@ Also note: ApoloSign is still not a "large manufacturer" in Square's recommended
 ### 4.2 Menu (Catalog API)
 - Backend pulls the full catalog per location and caches it: categories → items → **variations** (sizes) → **modifier lists** (ice, sugar, toppings, milk swap) → images → taxes.
 - Bubble-tea mapping: **size = item variation** (M/L), **ice / sugar / topping = modifier lists** with min/max selection rules. Toppings priced per modifier.
-- Incremental re-sync every 10 min + on `catalog.version.updated` webhook; kiosk pulls a diff on a version bump.
+- Incremental re-sync on `catalog.version.updated` webhook + a 10-min scheduled poll as a webhook-loss safety net; the structural menu (items/prices/modifiers) lands in Firestore and kiosks pick it up via listener.
 - **Item photos come from Square** (decided): each item's `CatalogImage` URLs are pulled during sync, resized/re-encoded to WebP by the backend, and cached on the kiosk. Card images center-crop to 400×260 (~1.54:1), so photos uploaded to Square should be ≥800px wide with the drink centered; items without a photo get the branded placeholder, never an empty box.
 - Fields Square can't express (sort order, "recommended" flags, upsell rules, per-item photo *override* if a Square photo crops badly) live in our DB, keyed by Square catalog ID — never a second source of truth for price.
-- Sold-out: Square inventory `NONE`/tracked-zero → grey out; plus a manual 86 toggle in the admin console that propagates in seconds.
+- Sold-out / 86 handling is real-time — see §4.2a.
+
+### 4.2a Real-time availability — **decided: Square is the switch, kiosks follow in ~1s**
+
+Requirement: when an item is marked unavailable in Square, every kiosk reflects it in real time. Square gives us the trigger; Firestore gives us the fan-out.
+
+**The trigger (Square side).** An item variation carries a per-location `sold_out` flag (`ItemVariationLocationOverrides`). It flips when staff mark an item sold out on the **Square Terminal / POS at the counter**, or automatically when tracked inventory hits zero. Every flip fires the `catalog.version.updated` webhook. (Tracked-count changes additionally fire `inventory.count.updated`.)
+
+**The pipeline.**
+```
+Staff tap "sold out" on the Square Terminal (or stock hits 0)
+  → Square webhook → HTTPS Cloud Function (signature-verified)
+    → fetch catalog delta since last version
+      → write branches/{id}/availability/{itemId} in one Firestore batch
+        → every kiosk's snapshot listener fires        →  item greys out
+        → the manager iOS app's listener fires          →  dashboard updates
+```
+End-to-end target: **under ~2s** from the tap on the Terminal to the grey card on the kiosk. No polling in the hot path — the 10-min poll exists only to self-heal if a webhook is ever dropped, and a `version` field on the availability doc makes replayed/out-of-order webhooks harmless.
+
+**Kiosk behavior on a flip:**
+- In the grid and item sheet: card greys instantly with a "Sold out" badge; an open customization sheet for that item disables ADD with the same badge.
+- **Already in a cart:** checkout re-validates every line against the availability doc before `CreateOrder`; anything that went dark triggers a clear "X just sold out — remove it and continue?" dialog rather than a cryptic order failure. (`CreateOrder` remains the final authority — a race that slips through fails loudly and refunds nothing, because payment only happens after the order is accepted.)
+- **Offline:** last-known availability applies, and the listener catches up the moment connectivity returns (Firestore handles the resubscribe).
+- The manager iOS app's 86 toggle writes the *same* availability doc directly (plus the Square override via API where applicable), so both paths — Square-side and app-side — converge on one document that kiosks watch.
 
 ### 4.3 Order + payment flow (Square Reader + Mobile Payments SDK) — **decided**
 
 Payment happens on a **Square Reader attached to the kiosk**, driven by the **Mobile Payments SDK inside our Android app**. The staff's Square Terminal is a separate device used at the counter to receive and work orders — it is not in the kiosk's payment path.
 
 **Authorizing the SDK (on every app start)**
-1. Kiosk authenticates to our backend with its device token.
+1. Kiosk authenticates as its **Firebase Auth device identity** (custom token minted at provisioning, scoped by security rules to its own branch).
 2. Backend calls `ObtainToken` with `grant_type=refresh_token` **and a narrowed `scopes` list** — `MERCHANT_PROFILE_READ`, `PAYMENTS_WRITE`, `PAYMENTS_WRITE_IN_PERSON` only — producing a payments-only access token for that device. The full-scope token never leaves the server.
 3. Backend returns `{access_token, location_id}` over TLS; kiosk stores it in the Android **Keystore / EncryptedSharedPreferences**, never in plain prefs or logs.
 4. Kiosk calls `AuthorizationManager.authorize(accessToken, locationId)`. On unpair, remote wipe, or branch change → `deauthorize()` and the backend revokes the token.
@@ -176,8 +202,8 @@ Payment happens on a **Square Reader attached to the kiosk**, driven by the **Mo
 - App monitors reader state continuously; a disconnected or low-battery reader raises a fleet alert *and* auto-hides card payment on the kiosk rather than failing a customer mid-checkout.
 
 **Taking a payment**
-1. Kiosk builds cart → `POST /orders` on our backend.
-2. Backend `CreateOrder` in Square (location = branch, source = "Tea Hut Kiosk", line items with variation + modifier IDs, taxes/discounts, `fulfillment` = PICKUP with the customer's name/number, `reference_id` = our order number). Idempotency key = our order UUID. Returns `order_id` + total.
+1. Kiosk builds cart → calls the `createOrder` callable Cloud Function.
+2. The function runs `CreateOrder` in Square (location = branch, source = "Tea Hut Kiosk", line items with variation + modifier IDs, taxes/discounts, `fulfillment` = PICKUP with the customer's name/number, `reference_id` = our order number). Idempotency key = our order UUID. Returns `order_id` + total.
 3. Kiosk shows its own tip screen (if enabled), then calls the SDK's `startPaymentActivity` with `PaymentParameters`: amount, `orderId`, `referenceId`, `tipMoney`, `autocomplete = true`, idempotency key = our order UUID.
 4. Reader prompts: **tap / insert / Apple Pay / Google Pay**. The SDK owns this UI; our app shows a matching full-screen "Tap or insert your card" state with a Cancel button.
 5. Success callback → payment is attached to the order → the order is paid and flows to the **staff Square Terminal**, KDS, kitchen printer, and Square reporting automatically.
@@ -346,7 +372,7 @@ Legend: **M** = MVP (launch) · **P1** = fast follow · **P2** = later
 | 9 | **Upsell prompts**: "Add a topping?" on item add, "Popular with your order" before checkout | P1 |
 | 10 | Combos / set meals (drink + snack bundle pricing) | P1 |
 | 11 | Search + "Best sellers" / "New" / "Recommended" merchandising rows | P1 |
-| 12 | Sold-out / 86'd items greyed with a reason badge | M |
+| 12 | **Real-time sold-out** (decided, §4.2a): Square-side flips reach every kiosk in ~1–2s via Firestore listener; greyed card + badge, in-cart re-validation at checkout | M |
 | 13 | Customer name or nickname for the order (for call-out) | M |
 | 14 | Phone number capture → SMS "your drink is ready" | P1 |
 | 15 | Item nutrition / allergen sheet | P2 |
@@ -389,13 +415,13 @@ Two surfaces (decided): **[iOS]** = manager app (Swift/SwiftUI), **[web]** = min
 | 35 | Branch (Square location) mapping and selection | web | M |
 | 36 | Square connect / reconnect / health indicator with token-expiry alerting | web (+ status in iOS) | M |
 | 37 | Kiosk fleet dashboard: online status, app version, last order, **reader connection + battery, device charging state**, remote reboot, remote deauthorize | iOS | M |
-| 37a | **Push alerts (APNs)**: kiosk offline, running on battery, reader disconnected, Square token refresh failure | iOS | M |
+| 37a | **Push alerts (FCM→APNs)**: kiosk offline, running on battery, reader disconnected, Square token refresh failure | iOS | M |
 | 38 | 86 / sold-out toggle (propagates to kiosks in seconds) | iOS | M |
 | 38a | Menu overrides: sort order, hide item, photo override | iOS + web | M |
 | 39 | Per-kiosk settings: tip %, idle timeout, tenders enabled | iOS | M |
 | 39a | Daily sales at a glance: kiosk count, AOV, top items | iOS | P1 |
 | 40 | Attract-screen media upload (images/video) per branch | web | P1 |
-| 41 | Remote config push without an app update | backend | P1 |
+| 41 | Remote config push without an app update — **Firebase Remote Config** | backend | P1 |
 | 42 | Audit log (who changed what, who exited kiosk mode) | web | P1 |
 
 ### 7.5 Platform / reliability
@@ -405,9 +431,9 @@ Two surfaces (decided): **[iOS]** = manager app (Swift/SwiftUI), **[web]** = min
 | 44 | Auto-launch on boot, watchdog restart on crash, screen-always-on | M |
 | 45 | **Offline mode**: browse + build a cart from the local menu cache; queue unpaid orders; block card payment while offline with a clear message | M |
 | 46 | Idempotency everywhere (no double-charge, no duplicate order on retry) | M |
-| 47 | Crash/ANR reporting + remote logs (Sentry or self-hosted) | M |
+| 47 | Crash/ANR reporting + remote logs — **Firebase Crashlytics** (kiosk + iOS manager app) | M |
 | 48 | OTA app updates via **managed Google Play** (EDLA device has real Play Store) or self-hosted APK + silent install as Device Owner | P1 |
-| 49 | Health heartbeat: online status **+ charging state — alert within minutes if the unit is running on battery** (5200mAh means an unplugged kiosk dies silently hours later), plus alert if dark >10 min during store hours | M |
+| 49 | Health heartbeat via Firestore presence doc (last-seen + charging state): **alert within minutes if the unit is running on battery** (5200mAh means an unplugged kiosk dies silently hours later), alert if dark >10 min during store hours — a scheduled Function watches, FCM delivers | M |
 | 50 | Auto-recovery: nightly restart at 4am (also good Li-ion hygiene for a permanently-docked battery), cache re-sync at open | P1 |
 
 ---
@@ -434,19 +460,23 @@ Every screen: a persistent "Start Over"; every screen auto-returns to Attract af
 
 ---
 
-## 9. Data model (backend, abbreviated)
+## 9. Data model (Firestore, abbreviated)
 
 ```
-merchant(id, square_merchant_id, access_token_enc, refresh_token_enc, expires_at, status)
-branch(id, merchant_id, square_location_id, name, timezone, settings_json)
-user(id, email, password_hash, role, created_at)
-user_branch(user_id, branch_id)
-kiosk(id, branch_id, name, device_token_hash, terminal_device_id, app_version, last_seen_at, settings_json)
-catalog_cache(branch_id, square_version, payload_json, synced_at)
-menu_override(branch_id, square_object_id, hidden, sold_out, sort, image_url, i18n_json)
-kiosk_order(id, kiosk_id, branch_id, square_order_id, square_checkout_id, state, total, created_at)
-audit_log(id, actor, action, target, meta_json, at)
+merchants/{merchantId}          square_merchant_id, status, token_secret_ref   ← tokens live in Secret Manager
+  branches/{branchId}           square_location_id, name, timezone, settings
+    menu/{version}              structural catalog snapshot (items, prices, modifiers) — kiosks listen
+    availability/{itemId}       sold_out, hidden, reason, version, updated_at  — the §4.2a live doc
+    overrides/{objectId}        sort, recommended, photo_override, upsell
+    kiosks/{kioskId}            name, reader_serial, app_version, presence: {last_seen, charging,
+                                reader_state}, settings                        — manager app listens
+    orders/{orderUuid}          square_order_id, state, total, payment_state, created_at
+                                (idempotency anchor: the doc id IS the order UUID)
+users/{uid}                     role + branch claims mirror (authority = Auth custom claims)
+audit/{eventId}                 actor, action, target, meta, at
 ```
+
+Access is enforced by **Firestore security rules**: a kiosk identity can read only its own branch's `menu`/`availability`/`overrides` and write only its own `presence`; managers read/write their branches via custom claims; `orders` and everything financial is **Functions-only** (no direct client writes). Order state transitions happen in Firestore transactions keyed on the order UUID — the same idempotency spine §4.3 relies on.
 
 ---
 
@@ -456,6 +486,7 @@ audit_log(id, actor, action, target, meta_json, at)
 - Square tokens: the **full-scope token lives only on the server**, encrypted at rest, rotated, revocable.
 - The kiosk holds (a) a revocable device token scoped to one branch and (b) a **narrowed payments-only Square token** (`MERCHANT_PROFILE_READ`, `PAYMENTS_WRITE`, `PAYMENTS_WRITE_IN_PERSON`) in the Android Keystore, re-minted before expiry and revocable per device from the admin console. No catalog, customer, or reporting access from the device's token.
 - Physical security matters more on this path than on the Terminal path: the device is the payment terminal. Kiosk lockdown, no adb in the field, tamper-evident mounting, and one-tap remote deauthorize if a unit goes missing.
+- **Firestore security rules are part of the security boundary**, not a config detail: kiosks are branch-scoped read-only identities, financial writes are Functions-only, and rules changes are code-reviewed like code. Square webhook functions verify the signature before touching anything.
 - TLS + certificate pinning on the kiosk; no debug builds in the field.
 - Kiosk mode prevents customers from reaching settings, browser, or files.
 - No customer PII on the device beyond the current in-progress order; phone/email go straight to Square/our backend and are cleared on completion.
@@ -467,7 +498,7 @@ audit_log(id, actor, action, target, meta_json, at)
 | Phase | Scope | Est. |
 |---|---|---|
 | **0. Validate — GATE** | **On the actual ApoloSign Gen2: run Square's Mobile Payments SDK sample app, authorize, pair the Reader, take a $1 sandbox payment; confirm Android 16 SDK support.** Then the rest of §2.2 — factory-reset → Device Owner, lock-task vs voice remote, portrait lock, battery telemetry. *Nothing else starts until this passes.* Order 1 unit + 1 Reader now; ~$350 answers every open hardware question. | 3–5 days |
-| **1. Backend core** | Auth + roles, Square OAuth + token refresh, **scoped token minting for devices**, locations, catalog sync, device registry | 1.5–2 wks |
+| **1. Backend core** | Firebase project + security rules, Auth + roles (custom claims), Square OAuth + scheduled refresh (Secret Manager), **scoped token minting for devices**, locations, catalog sync → Firestore, **§4.2a availability pipeline**, device registry | 1.5–2 wks |
 | **2. Kiosk MVP** | Attract → menu → customization → cart → checkout → **Reader payment via MPS** → confirmation; reader state handling; crash-safe idempotency; offline cache; kiosk lockdown | 3–4 wks |
 | **3. Ops** | **Manager iOS app** (fleet dashboard, APNs alerts, 86 toggle, kiosk settings, sales glance) + minimal owner web console (Square connect, accounts, branches) | 2–2.5 wks |
 | **4. Pilot** | One kiosk in one Tea Hut store, 2 weeks of live tuning, staff training, runbook | 2 wks |
@@ -491,7 +522,9 @@ audit_log(id, actor, action, target, meta_json, at)
 | Menu photos | Pulled from Square catalog images (§4.2) |
 | Accent color | Apple blue `#007AFF` (§6.4) |
 | Logo | None |
-| Manager surface | **Separate iOS app** (Swift/SwiftUI) with APNs push alerts; minimal web console retained for owner setup (§3, §7.4) |
+| Manager surface | **Separate iOS app** (Swift/SwiftUI) with push alerts; minimal web console retained for owner setup (§3, §7.4) |
+| Backend | **Firebase** — Cloud Functions (TS) + Firestore + Auth + FCM + Storage + Remote Config + Crashlytics (§3) |
+| Availability | **Real-time**: Square sold-out flips fan out to kiosks in ~1–2s via webhook → Firestore listener (§4.2a) |
 
 **Still open:**
 1. **Wired or BLE Reader** — does the ApoloSign's USB port power a wired Reader? Phase 0 settles it; BLE + powered dock is the fallback.
@@ -515,5 +548,6 @@ audit_log(id, actor, action, target, meta_json, at)
 - [Square OAuth: refresh, revoke, limit scope](https://developer.squareup.com/docs/oauth-api/refresh-revoke-limit-scope) · [OAuth best practices](https://developer.squareup.com/docs/oauth-api/best-practices) — 30-day access tokens, code-flow refresh tokens valid until revoked, `scopes` narrowing on `ObtainToken`
 - [Square Terminal API overview](https://developer.squareup.com/docs/terminal-api/overview) — retained as the §4.3a fallback path
 - [Square Catalog API: modifiers](https://developer.squareup.com/docs/catalog-api/enable-modifiers-on-items) · [item options](https://developer.squareup.com/docs/catalog-api/item-options)
+- [Monitor sold-out item variations](https://developer.squareup.com/docs/inventory-api/monitor-sold-out-status-on-item-variation) · [ItemVariationLocationOverrides](https://developer.squareup.com/reference/square/objects/ItemVariationLocationOverrides) · [catalog.version.updated](https://developer.squareup.com/reference/square/catalog-api/webhooks/catalog.version.updated) — per-location `sold_out`, auto-set at zero stock, webhook on every flip (§4.2a)
 - [Chowbus restaurant kiosk](https://www.chowbus.com/hardware/restaurant-kiosk) · [MenuSifu boba kiosk features](https://www.menusifu.com/blog/boba-shop-kiosk-system) · [MenuSifu kiosk hardware](https://www.menusifu.com/hardware/restaurant-kiosk) — reference feature set
 - [KioskBuddy ↔ Square Terminal](https://www.kioskbuddy.app/help/square-terminal) · [Sending kiosk orders to Square POS](https://www.kioskbuddy.app/help/square-orders) — proof the Terminal API path works in production
