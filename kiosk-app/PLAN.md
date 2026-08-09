@@ -1,6 +1,6 @@
 # Tea Hut Self-Order Kiosk — Product & Technical Plan
 
-**Status:** Draft v6 — decisions locked through §12; awaiting Phase 0 hardware
+**Status:** Draft v7 — decisions locked through §12; awaiting Phase 0 hardware
 **Target:** **ApoloSign 24" FHD Smart Portable TV Gen2** (Android 16, EDLA-certified, touch, rolling stand), in-store, Tea Hut branches only
 **Canvas:** **1080 × 1920 portrait**, locked orientation, no logo
 **Payment:** Square Reader on the kiosk (Mobile Payments SDK); staff Square Terminal at the counter receives orders
@@ -256,7 +256,7 @@ Program details (point name, earning rule, reward tiers) are read from `Retrieve
 | Role | Can do |
 |---|---|
 | Owner | **Web console:** connect/disconnect Square, create accounts, branch mapping — all branches. Can also use the manager iOS app. |
-| Manager | **iOS app (their daily surface):** fleet dashboard + push alerts, 86 items, menu overrides, kiosk settings, sales, remote reboot/deauthorize — their branch. Sets the kiosk-unlock PIN. |
+| Manager | **iOS app (their daily surface):** fleet dashboard + push alerts, 86 items, menu overrides, kiosk settings, sales, **full device control — lock/unlock, restart, reboot (§5.1)** — their branch. Sets the kiosk-unlock PIN. |
 | Staff | **On the kiosk itself:** unlock (manager PIN + hidden gesture), start/stop kiosk mode, assist customers. No app of their own. |
 
 **Flow on a fresh kiosk**
@@ -266,7 +266,25 @@ Program details (point name, earning rule, reward tiers) are read from `Retrieve
 4. Device registers itself → backend issues a **device token** (long-lived, revocable, scoped to that one branch) and mints the first scoped payments token; the staff session ends. From then on the kiosk boots straight into the attract screen with no login — even after a power cut — re-authorizing the SDK silently on each start.
 5. Exiting kiosk mode requires a manager PIN + a hidden gesture (5-tap corner), matching how Chowbus/MenuSifu do it. Reader settings live behind the same PIN.
 
-The device registry lives in the backend and renders in the **manager iOS app**: name ("Tea Hut Flushing #2"), branch, **reader serial / connection state / battery**, app version, last seen, network, **device charging state**, remote reboot, remote deauthorize + token revoke. Anything red pushes an APNs alert to the branch's managers.
+The device registry lives in the backend and renders in the **manager iOS app**: name ("Tea Hut Flushing #2"), branch, **reader serial / connection state / battery**, app version, last seen, network, **device charging state**. Anything red pushes an alert to the branch's managers.
+
+### 5.1 Full remote control from the manager app — **decided**
+
+The kiosk app is the **Device Owner** of the ApoloSign, which is what makes real remote control possible — `DevicePolicyManager.reboot()`, lock-task, and silent updates are Device Owner powers, not tricks.
+
+**Command channel.** The manager app writes a command document to `…/kiosks/{id}/commands` and the backend sends an FCM data ping so the kiosk acts immediately; the Firestore doc is the source of truth, so a kiosk that was offline executes the queue on reconnect. Every command carries a **TTL** (a stale "reboot" from last night must not fire during the lunch rush), and every command is **audit-logged**: who, what, when, result. The kiosk acks each command with an outcome the manager sees in the app.
+
+| Command | What happens on the kiosk | Guardrail |
+|---|---|---|
+| **Lock** | Ordering pauses instantly; full-screen "Temporarily closed" (message editable per branch); attract loop stops | An in-flight payment always settles first — lock takes effect at the next safe state, never mid-charge |
+| **Unlock** | Returns to the attract screen | — |
+| **Restart app** | Process restarts via the watchdog; back in ~5s | Same mid-payment protection |
+| **Reboot device** | Full Android reboot (`DevicePolicyManager.reboot()`), auto-boots into kiosk mode | Same mid-payment protection |
+| **Re-sync** | Forces menu + availability + config refresh | — |
+| **Deauthorize** | SDK `deauthorize()` + backend revokes the device's Square token | — |
+| **Wipe** (nuclear) | Factory reset via Device Owner `wipeData()` — for a stolen or compromised unit | **Owner role only**, typed confirmation, irreversible |
+
+Lock/Unlock/Restart work per-kiosk or all-kiosks-in-branch (one tap closes the whole store's kiosks at closing time). Scheduled auto-lock outside store hours is the same mechanism on a timer — store hours live in branch settings.
 
 ---
 
@@ -416,6 +434,8 @@ Two surfaces (decided): **[iOS]** = manager app (Swift/SwiftUI), **[web]** = min
 | 36 | Square connect / reconnect / health indicator with token-expiry alerting | web (+ status in iOS) | M |
 | 37 | Kiosk fleet dashboard: online status, app version, last order, **reader connection + battery, device charging state**, remote reboot, remote deauthorize | iOS | M |
 | 37a | **Push alerts (FCM→APNs)**: kiosk offline, running on battery, reader disconnected, Square token refresh failure | iOS | M |
+| 37b | **Full remote control** (§5.1): lock/unlock with "temporarily closed" screen, restart app, reboot device, re-sync, deauthorize — per kiosk or whole branch; wipe (owner-only) | iOS | M |
+| 37c | Scheduled auto-lock outside store hours (same command channel on a timer) | iOS | P1 |
 | 38 | 86 / sold-out toggle (propagates to kiosks in seconds) | iOS | M |
 | 38a | Menu overrides: sort order, hide item, photo override | iOS + web | M |
 | 39 | Per-kiosk settings: tip %, idle timeout, tenders enabled | iOS | M |
@@ -525,12 +545,24 @@ Access is enforced by **Firestore security rules**: a kiosk identity can read on
 | Manager surface | **Separate iOS app** (Swift/SwiftUI) with push alerts; minimal web console retained for owner setup (§3, §7.4) |
 | Backend | **Firebase** — Cloud Functions (TS) + Firestore + Auth + FCM + Storage + Remote Config + Crashlytics (§3) |
 | Availability | **Real-time**: Square sold-out flips fan out to kiosks in ~1–2s via webhook → Firestore listener (§4.2a) |
+| Remote control | Manager app fully controls kiosks — lock/unlock, restart, reboot, re-sync, deauthorize, owner-only wipe — via Firestore command queue + FCM, with mid-payment guardrails and audit log (§5.1) |
 
-**Still open:**
-1. **Wired or BLE Reader** — does the ApoloSign's USB port power a wired Reader? Phase 0 settles it; BLE + powered dock is the fallback.
-2. **Confirm §4.3a's attended conditions** — always inside, staff line of sight, inaccessible after close; "who wheels it where at close" goes in the store runbook.
-3. **Verify at pilot:** cashier can pull up a kiosk payment on the staff Terminal and print its receipt (transaction history at the same location — expected to work, confirm on real hardware).
-4. **Is Square Loyalty already configured** in the Tea Hut account (earning rule + reward tiers)? The kiosk renders whatever the program defines; if it's not set up yet, that's a 30-minute Square Dashboard task before pilot.
+**Still open — needs your answer:**
+1. **Attended-kiosk conditions (§4.3a)** — confirm the kiosk is always inside, in staff line of sight, and unreachable after close; and who wheels it where at closing (goes in the store runbook).
+2. **Manager app distribution** — TestFlight (fastest, builds expire in 90 days) or a private/unlisted App Store listing (permanent, more setup)? And do all managers carry iPhones? If any manager is Android-only, §3's iOS-only decision needs a second look.
+3. **Account ownership** — who owns/creates: the Square developer application (for OAuth + SDK credentials), the Firebase project, and the **Apple Developer account** ($99/yr — required for the iOS app and its push notifications)?
+4. **Square Loyalty configured?** — earning rule + reward tiers in the Square Dashboard. If not set up yet, it's a ~30-min dashboard task before pilot.
+5. **Square catalog readiness** — are Tea Hut's drinks already in Square *with modifier lists* (ice / sugar / toppings / size variations), or is menu structuring part of the project?
+6. **Tip presets** — which buttons? (e.g., 10% / 15% / 20% / No tip, or dollar amounts for small tickets.)
+7. **Attract-screen content** — who supplies the idle-loop images/video?
+8. **Hardware in hand?** — do you already have the ApoloSign and a Square Reader, or should Phase 0 start with a purchase? (~$350 covers both.)
+9. **Store hours per branch** — needed for the "dark during store hours" alert and the scheduled auto-lock (§5.1).
+
+**Pending verification — not your call, hardware/pilot answers them:**
+10. Phase 0 gate (§2.2): the Mobile Payments SDK authorizes, pairs, and takes a $1 sandbox payment on the actual ApoloSign; Android 16 supported by the current SDK release.
+11. **Wired vs BLE Reader** — whether the ApoloSign's USB port powers a wired Reader; BLE + powered dock is the fallback.
+12. Cashier can pull up a kiosk payment on the staff Terminal and print its receipt (same-location transaction history — expected to work, confirm on real hardware).
+13. Device Owner provisioning + lock-task on the real unit ignores the voice remote (§2.2).
 
 ---
 

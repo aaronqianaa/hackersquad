@@ -22,12 +22,12 @@ kiosk-app/
 
 | | |
 |---|---|
-| Plan | Draft v6 — decisions locked (see PLAN.md §12 log) |
+| Plan | Draft v7 — decisions locked (see PLAN.md §12 log) |
 | Device | ApoloSign 24" FHD Smart Portable TV Gen2 — Android 16, EDLA-certified, touch, rolling stand |
 | Canvas | 1080 × 1920 portrait, locked, no logo, English-only v1, accent #007AFF |
 | App language | Kotlin + Jetpack Compose |
 | Backend | Firebase — Cloud Functions (TypeScript) + Firestore + Auth + FCM |
-| Manager app | iOS — Swift + SwiftUI, APNs push alerts |
+| Manager app | iOS — Swift + SwiftUI, push alerts + full kiosk control (lock/restart/reboot, PLAN.md §5.1) |
 | Payment | Square Reader on the kiosk via Mobile Payments SDK (PLAN.md §4.3) |
 | Staff | Square Terminal at the counter receives kiosk orders + prints receipts on request |
 | Loyalty | Square Loyalty in MVP (PLAN.md §4.4) |
